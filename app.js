@@ -1,4 +1,4 @@
-// --- NO-FRILLS UI CONTROLLER (QUALITATIVE SCOUTING LAYOUT) ---
+// --- NO-FRILLS UI CONTROLLER (QUALITATIVE SCOUTING LAYOUT V2) ---
 
 let DB = null;
 let state = null;
@@ -14,20 +14,32 @@ const CURRENCY_SYMBOLS = {
   USD: '$'
 };
 
-function formatMoney(amount, isWage = false) {
-  const cfg = (state && state.config) ? state.config : { currency: 'GBP', wageCadence: 'weekly' };
+function formatMoney(amount) {
+  const cfg = (state && state.config) ? state.config : { currency: 'GBP' };
   const sym = CURRENCY_SYMBOLS[cfg.currency] || '£';
 
-  let adjusted = amount;
-  if (isWage) {
-    if (cfg.wageCadence === 'monthly') adjusted = Math.round((amount * 52) / 12);
-    else if (cfg.wageCadence === 'yearly') adjusted = Math.round(amount * 52);
-  }
+  if (amount >= 10000000) return `${sym}${Math.round(amount / 1000000)}M`;
+  if (amount >= 1000000) return `${sym}${(amount / 1000000).toFixed(1)}M`;
+  if (amount >= 1000) return `${sym}${(amount / 1000).toFixed(0)}k`;
+  return `${sym}${amount.toLocaleString()}`;
+}
 
-  if (adjusted >= 10000000) return `${sym}${Math.round(adjusted / 1000000)}M`;
-  if (adjusted >= 1000000) return `${sym}${(adjusted / 1000000).toFixed(1)}M`;
-  if (adjusted >= 1000) return `${sym}${(adjusted / 1000).toFixed(0)}k`;
-  return `${sym}${adjusted.toLocaleString()}`;
+// Unit conversion helpers
+function formatHeight(cm, units = 'metric') {
+  if (units === 'imperial') {
+    const totalInches = Math.round(cm / 2.54);
+    const feet = Math.floor(totalInches / 12);
+    const inches = totalInches % 12;
+    return `${feet}'${inches}"`;
+  }
+  return `${cm}`;
+}
+
+function formatWeight(kg, units = 'metric') {
+  if (units === 'imperial') {
+    return `${Math.round(kg * 2.20462)}`;
+  }
+  return `${kg}`;
 }
 
 async function boot() {
@@ -39,7 +51,8 @@ async function boot() {
     const saved = localStorage.getItem('apex_wpm_save_v1');
     if (saved) {
       state = JSON.parse(saved);
-      if (!state.config) state.config = { currency: 'GBP', wageCadence: 'weekly' };
+      if (!state.config) state.config = { currency: 'GBP', wageCadence: 'weekly', units: 'metric' };
+      if (!state.config.units) state.config.units = 'metric';
       renderLayout();
     } else {
       renderClubCreator();
@@ -66,7 +79,7 @@ function resetGameDatabase() {
 
 function renderClubCreator() {
   document.getElementById('app-root').innerHTML = `
-    <div style="max-width: 460px; margin: 50px auto;" class="panel">
+    <div style="max-width: 480px; margin: 50px auto;" class="panel">
       <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700;">
         NEW CLUB REGISTRATION (DIVISION 10)
       </div>
@@ -85,7 +98,7 @@ function renderClubCreator() {
           <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Stadium Ground Name:</label>
           <input id="create-ground" placeholder="e.g. Waterfront Park" style="width: 100%;">
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
           <div>
             <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Currency:</label>
             <select id="create-currency" style="width: 100%;">
@@ -102,6 +115,13 @@ function renderClubCreator() {
               <option value="yearly">Yearly</option>
             </select>
           </div>
+          <div>
+            <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Units:</label>
+            <select id="create-units" style="width: 100%;">
+              <option value="metric">Metric (CM/KG)</option>
+              <option value="imperial">Imperial (FT/LB)</option>
+            </select>
+          </div>
         </div>
         <button type="submit" class="primary" style="margin-top: 8px; padding: 8px;">CREATE CLUB & ENTER PYRAMID</button>
       </form>
@@ -116,6 +136,7 @@ function handleCreateClub(e) {
   const stadium = document.getElementById('create-ground').value.trim() || `${name} Stadium`;
   const currency = document.getElementById('create-currency').value;
   const wageCadence = document.getElementById('create-wage-cadence').value;
+  const units = document.getElementById('create-units').value;
 
   const userTeamId = 'club_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const teams = {};
@@ -140,7 +161,13 @@ function handleCreateClub(e) {
     };
   });
 
-  Object.values(teams).forEach(t => autoAssignLineup(t));
+  // Ensure initial user squad starts completely unassigned
+  teams[userTeamId].squad.forEach(p => p.slot = 'RES');
+
+  // CPU squads auto-assign their initial lineups
+  Object.values(teams).forEach(t => {
+    if (!t.isUser) autoAssignLineup(t);
+  });
 
   const tables = {};
   for (let d = 1; d <= 10; d++) {
@@ -153,7 +180,7 @@ function handleCreateClub(e) {
 
   state = {
     season: 1, round: 1, maxRounds: 38,
-    config: { currency, wageCadence },
+    config: { currency, wageCadence, units },
     userTeamId, teams, tables,
     fixtures: generateFixtures(teams)
   };
@@ -219,25 +246,57 @@ function getSlotRank(slot) {
   return 999;
 }
 
+// Render sorted trait badges: [+] positive assets first, [-] negative liabilities second
 function renderTraitBadges(traits = []) {
   if (!traits.length) return '<span style="color: var(--text-muted);">-</span>';
-  return traits.map(t => {
+  
+  const sorted = [...traits].sort((a, b) => {
+    const aIsPos = a.startsWith('[+');
+    const bIsPos = b.startsWith('[+');
+    if (aIsPos && !bIsPos) return -1;
+    if (!aIsPos && bIsPos) return 1;
+    return a.localeCompare(b);
+  });
+
+  return sorted.map(t => {
     const isAsset = t.startsWith('[+');
     const label = t.replace(/[\[\]\+\-]/g, '');
     return `<span class="badge ${isAsset ? 'badge-asset' : 'badge-liability'}">${isAsset ? '+' : '-'}${label}</span>`;
   }).join('');
 }
 
-// --- SQUAD DIRECTORY (QUALITATIVE) ---
+// Extract clean glyph characters [IP, OOP, TR]
+function parseGlyphs(phaseGlyphs = "✓ / ✓ / ✓") {
+  const parts = phaseGlyphs.split('/').map(s => s.trim());
+  return {
+    ip: parts[0] || '✓',
+    oop: parts[1] || '✓',
+    tr: parts[2] || '✓'
+  };
+}
+
+// Format individual glyph cells with distinct styling
+function renderGlyphCell(glyph) {
+  let color = 'var(--text-muted)';
+  if (glyph === '+') color = 'var(--green)';
+  if (glyph === '-') color = 'var(--red)';
+  return `<span style="font-size: 15px; font-weight: 700; color: ${color};">${glyph}</span>`;
+}
+
+// --- SQUAD DIRECTORY ---
 function renderSquadView(container) {
   const team = state.teams[state.userTeamId];
+  const units = (state.config && state.config.units) || 'metric';
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   
   const starterOpts = formRoles.map((role, i) => ({ val: `S${i + 1}`, label: role }));
   const benchOpts = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: 'BN' }));
-  const allOpts = [{ val: 'RES', label: 'RES' }, ...starterOpts, ...benchOpts];
+  const allOpts = [{ val: 'RES', label: '-' }, ...starterOpts, ...benchOpts];
 
   const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
+
+  const hUnit = units === 'imperial' ? 'FT' : 'CM';
+  const wUnit = units === 'imperial' ? 'LB' : 'KG';
 
   container.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -252,26 +311,36 @@ function renderSquadView(container) {
       <table>
         <thead>
           <tr>
-            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 85px;">Slot</th>
+            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 75px;">Slot</th>
             <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
             <th onclick="sortSquad('archetypeName')" style="cursor: pointer;">Archetype</th>
-            <th>Morphology</th>
+            <th onclick="sortSquad('age')" style="cursor: pointer; text-align: center;">Age</th>
+            <th onclick="sortSquad('heightCm')" style="cursor: pointer; text-align: center;">${hUnit}</th>
+            <th onclick="sortSquad('weightKg')" style="cursor: pointer; text-align: center;">${wUnit}</th>
             <th>Traits</th>
-            <th style="text-align: center;" title="Phase Evaluation (In Possession / Out of Possession / Transitions)">IP / OOP / TR</th>
-            <th style="text-align: center;">Form</th>
+            <th style="text-align: center; width: 42px;" title="In Possession">IP</th>
+            <th style="text-align: center; width: 42px;" title="Out of Possession">OOP</th>
+            <th style="text-align: center; width: 42px;" title="Transitions">TR</th>
+            <th onclick="sortSquad('avgRating')" style="cursor: pointer; text-align: center;" title="Season Average Rating">Avg</th>
+            <th style="text-align: center;" title="Last 5 Matches Form">Form</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
-            <th style="text-align: right;">Wage</th>
+            <th onclick="sortSquad('val')" style="cursor: pointer; text-align: right;">Valuation</th>
           </tr>
         </thead>
         <tbody>
           ${team.squad.map(p => {
-            const form = p.ratingsHistory.length ? (p.ratingsHistory.reduce((a, b) => a + b, 0) / p.ratingsHistory.length).toFixed(1) : '-';
-            const morph = `${p.morphology.heightCm}cm / ${p.morphology.weightKg}kg`;
+            const hist = p.ratingsHistory || [];
+            const avgRating = hist.length ? (hist.reduce((a, b) => a + b, 0) / hist.length).toFixed(1) : '-';
+            const form = hist.length ? hist.slice(-5).map(r => r.toFixed(1)).join(' ') : '-';
+            
+            const glyphs = parseGlyphs(p.phaseGlyphs);
+            const heightStr = formatHeight(p.morphology.heightCm, units);
+            const weightStr = formatWeight(p.morphology.weightKg, units);
 
             return `
               <tr>
                 <td>
-                  <select onchange="handleSlotChange('${p.id}', this.value)">
+                  <select onchange="handleSlotChange('${p.id}', this.value)" style="width: 100%;">
                     ${allOpts.map(o => `<option value="${o.val}" ${p.slot === o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
                   </select>
                 </td>
@@ -279,12 +348,17 @@ function renderSquadView(container) {
                   ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
                 </td>
                 <td style="color: var(--text);">${p.archetypeName}</td>
-                <td style="color: var(--text-muted); font-size: 11px;">${morph}</td>
+                <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
+                <td style="text-align: center; font-size: 11px;">${heightStr}</td>
+                <td style="text-align: center; font-size: 11px;">${weightStr}</td>
                 <td>${renderTraitBadges(p.traits)}</td>
-                <td style="text-align: center;" class="glyph-tag"><strong>${p.phaseGlyphs}</strong></td>
-                <td style="text-align: center; color: var(--accent);">${form}</td>
+                <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
+                <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
+                <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
+                <td style="text-align: center; font-weight: 600; color: #fff;">${avgRating}</td>
+                <td style="text-align: center; color: var(--accent); font-size: 10px;">${form}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
-                <td style="text-align: right;">${formatMoney(p.wage, true)}</td>
+                <td style="text-align: right; color: var(--green); font-weight: 600;">${formatMoney(p.val)}</td>
               </tr>
             `;
           }).join('')}
@@ -330,6 +404,18 @@ function sortSquad(key) {
       const rankA = getSlotRank(a.slot);
       const rankB = getSlotRank(b.slot);
       return squadSort.asc ? rankA - rankB : rankB - rankA;
+    }
+
+    if (squadSort.key === 'heightCm') {
+      return squadSort.asc ? a.morphology.heightCm - b.morphology.heightCm : b.morphology.heightCm - a.morphology.heightCm;
+    }
+    if (squadSort.key === 'weightKg') {
+      return squadSort.asc ? a.morphology.weightKg - b.morphology.weightKg : b.morphology.weightKg - a.morphology.weightKg;
+    }
+    if (squadSort.key === 'avgRating') {
+      const avgA = a.ratingsHistory.length ? a.ratingsHistory.reduce((x, y) => x + y, 0) / a.ratingsHistory.length : 0;
+      const avgB = b.ratingsHistory.length ? b.ratingsHistory.reduce((x, y) => x + y, 0) / b.ratingsHistory.length : 0;
+      return squadSort.asc ? avgA - avgB : avgB - avgA;
     }
 
     let valA = a[squadSort.key];
@@ -447,6 +533,7 @@ function setTableDiv(d) {
 
 // --- TRANSFERS VIEW ---
 function renderTransfersView(container) {
+  const units = (state.config && state.config.units) || 'metric';
   const all = [];
   Object.values(state.teams).forEach(t => {
     if (t.id !== state.userTeamId) {
@@ -455,6 +542,8 @@ function renderTransfersView(container) {
   });
 
   const targets = all.slice(0, 40);
+  const hUnit = units === 'imperial' ? 'FT' : 'CM';
+  const wUnit = units === 'imperial' ? 'LB' : 'KG';
 
   container.innerHTML = `
     <div class="panel" style="overflow-x: auto;">
@@ -465,31 +554,45 @@ function renderTransfersView(container) {
             <th>Archetype</th>
             <th>Club</th>
             <th style="text-align: center;">Div</th>
-            <th>Morphology</th>
+            <th style="text-align: center;">Age</th>
+            <th style="text-align: center;">${hUnit}</th>
+            <th style="text-align: center;">${wUnit}</th>
             <th>Traits</th>
-            <th style="text-align: center;">IP / OOP / TR</th>
+            <th style="text-align: center; width: 40px;" title="In Possession">IP</th>
+            <th style="text-align: center; width: 40px;" title="Out of Possession">OOP</th>
+            <th style="text-align: center; width: 40px;" title="Transitions">TR</th>
             <th style="text-align: right;">Valuation</th>
             <th style="text-align: center;">Action</th>
           </tr>
         </thead>
         <tbody>
-          ${targets.map(p => `
-            <tr>
-              <td style="font-weight: 600;">
-                ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
-              </td>
-              <td style="color: var(--text);">${p.archetypeName}</td>
-              <td style="color: var(--text-muted);">${p.club}</td>
-              <td style="text-align: center;">${p.div}</td>
-              <td style="color: var(--text-muted); font-size: 11px;">${p.morphology.heightCm}cm / ${p.morphology.weightKg}kg</td>
-              <td>${renderTraitBadges(p.traits)}</td>
-              <td style="text-align: center;" class="glyph-tag"><strong>${p.phaseGlyphs}</strong></td>
-              <td style="text-align: right; color: var(--green);">${formatMoney(p.val)}</td>
-              <td style="text-align: center;">
-                <button onclick="signTarget('${p.id}', '${p.clubId}')" class="primary" style="padding: 2px 8px;">SIGN</button>
-              </td>
-            </tr>
-          `).join('')}
+          ${targets.map(p => {
+            const glyphs = parseGlyphs(p.phaseGlyphs);
+            const heightStr = formatHeight(p.morphology.heightCm, units);
+            const weightStr = formatWeight(p.morphology.weightKg, units);
+
+            return `
+              <tr>
+                <td style="font-weight: 600;">
+                  ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
+                </td>
+                <td style="color: var(--text);">${p.archetypeName}</td>
+                <td style="color: var(--text-muted);">${p.club}</td>
+                <td style="text-align: center;">${p.div}</td>
+                <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
+                <td style="text-align: center; font-size: 11px;">${heightStr}</td>
+                <td style="text-align: center; font-size: 11px;">${weightStr}</td>
+                <td>${renderTraitBadges(p.traits)}</td>
+                <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
+                <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
+                <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
+                <td style="text-align: right; color: var(--green); font-weight: 600;">${formatMoney(p.val)}</td>
+                <td style="text-align: center;">
+                  <button onclick="signTarget('${p.id}', '${p.clubId}')" class="primary" style="padding: 2px 8px;">SIGN</button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
     </div>
