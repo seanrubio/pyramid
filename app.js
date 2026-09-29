@@ -46,13 +46,6 @@ function formatMoney(amount, isWage = false) {
   return `${sym}${adjusted.toLocaleString()}`;
 }
 
-function getWageSuffix() {
-  const cfg = (state && state.config) ? state.config : { wageCadence: 'weekly' };
-  if (cfg.wageCadence === 'monthly') return '/mo';
-  if (cfg.wageCadence === 'yearly') return '/yr';
-  return '/wk';
-}
-
 async function boot() {
   try {
     const res = await fetch('./data.json');
@@ -261,7 +254,6 @@ function renderSquadView(container) {
   const allOpts = [{ val: 'RES', label: 'RES' }, ...starterOpts, ...benchOpts];
 
   const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
-  const wageSuffix = getWageSuffix();
 
   container.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -311,7 +303,7 @@ function renderSquadView(container) {
                 <td style="text-align: center; font-size: 13px;" title="${p.morale}">${emoji}</td>
                 <td style="text-align: center; color: var(--accent);">${form}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
-                <td style="text-align: right;">${formatMoney(p.wage, true)}${wageSuffix}</td>
+                <td style="text-align: right;">${formatMoney(p.wage, true)}</td>
               </tr>
             `;
           }).join('')}
