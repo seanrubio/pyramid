@@ -371,42 +371,58 @@ function generateFixtures(teams) {
 }
 
 function buildRoundRobin(teamIds) {
-  const rounds = [];
   const n = teamIds.length;
-  const pool = [...teamIds];
+  let teams = [...teamIds];
 
-  // First half of the season (n - 1 rounds)
+  const firstHalf = [];
+
+  // Generate n - 1 rounds for first half
   for (let r = 0; r < n - 1; r++) {
     const roundFixtures = [];
-    
-    for (let i = 0; i < n / 2; i++) {
-      let t1 = (i === 0) ? pool[n - 1] : pool[(r + i) % (n - 1)];
-      let t2 = pool[(n - 1 - i + r) % (n - 1)];
 
-      // Alternate home/away for the pivot club every round
-      let home = (i === 0 && r % 2 === 1) ? t2 : t1;
-      let away = (i === 0 && r % 2 === 1) ? t1 : t2;
+    for (let i = 0; i < n / 2; i++) {
+      let home = teams[i];
+      let away = teams[n - 1 - i];
+
+      // Alternate the anchor match (slot 0) each round
+      if (i === 0 && r % 2 === 1) {
+        [home, away] = [away, home];
+      } else if (i > 0 && (i + r) % 2 === 1) {
+        // Interleave remaining pairs so all clubs alternate H/A
+        [home, away] = [away, home];
+      }
 
       roundFixtures.push({
         home,
         away,
-        played: false, hg: 0, ag: 0, hxg: 0, axg: 0
+        played: false,
+        hg: 0,
+        ag: 0,
+        hxg: 0,
+        axg: 0
       });
     }
-    rounds.push(roundFixtures);
+
+    firstHalf.push(roundFixtures);
+
+    // Rotate elements, keeping index 0 fixed (standard polygon method)
+    teams = [teams[0], teams[n - 1], ...teams.slice(1, n - 1)];
   }
 
-  // Second half: mirror the first half with reversed home/away venues
-  for (let r = 0; r < n - 1; r++) {
-    const reverseRound = rounds[r].map(fix => ({
+  // Second half: identical matchups with inverted venues
+  const secondHalf = firstHalf.map(round => 
+    round.map(fix => ({
       home: fix.away,
       away: fix.home,
-      played: false, hg: 0, ag: 0, hxg: 0, axg: 0
-    }));
-    rounds.push(reverseRound);
-  }
+      played: false,
+      hg: 0,
+      ag: 0,
+      hxg: 0,
+      axg: 0
+    }))
+  );
 
-  return rounds;
+  return [...firstHalf, ...secondHalf];
 }
 
 function runRoundSimulation() {
