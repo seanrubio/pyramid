@@ -39,6 +39,15 @@ function generatePlayerName(region = 'anglo') {
   return `${first} ${last}`;
 }
 
+// Calculate individual player phase power
+function getPlayerPhaseScores(p) {
+  const a = p.attributes;
+  const ip = (a.proprioception * 0.20) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.075) + (a.scanning * 0.20) + (a.processing * 0.15) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
+  const oop = (a.proprioception * 0.075) + (a.dynamicPower * 0.20) + (a.bioenergetics * 0.15) + (a.scanning * 0.15) + (a.processing * 0.075) + (a.regulation * 0.075) + (a.grit * 0.15) + (a.stewardship * 0.125);
+  const tr = (a.proprioception * 0.15) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.20) + (a.scanning * 0.075) + (a.processing * 0.20) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
+  return { ip, oop, tr };
+}
+
 // Generate Player without explicit position strings
 function generatePlayer(isGK, div, natCode = null) {
   const countryObj = natCode ? getCountry(natCode) : DB.countries[Math.floor(Math.random() * DB.countries.length)];
@@ -74,42 +83,14 @@ function generatePlayer(isGK, div, natCode = null) {
   const bmi = +(randomGaussian(baseMorph.bmiMean + archetype.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
   const weightKg = Math.round(bmi * Math.pow(heightCm / 100, 2));
 
-  // Phase Composites across all 8 pillars (Calibrated Mid-Contrast Matrix)
-  const ipScore = 
-    (attributes.proprioception * 0.20) +
-    (attributes.dynamicPower   * 0.15) +
-    (attributes.bioenergetics  * 0.075) +
-    (attributes.scanning       * 0.20) +
-    (attributes.processing     * 0.15) +
-    (attributes.regulation     * 0.075) +
-    (attributes.grit           * 0.075) +
-    (attributes.stewardship    * 0.075);
-
-  const oopScore = 
-    (attributes.proprioception * 0.075) +
-    (attributes.dynamicPower   * 0.20) +
-    (attributes.bioenergetics  * 0.15) +
-    (attributes.scanning       * 0.15) +
-    (attributes.processing     * 0.075) +
-    (attributes.regulation     * 0.075) +
-    (attributes.grit           * 0.15) +
-    (attributes.stewardship    * 0.125);
-
-  const trScore = 
-    (attributes.proprioception * 0.15) +
-    (attributes.dynamicPower   * 0.15) +
-    (attributes.bioenergetics  * 0.20) +
-    (attributes.scanning       * 0.075) +
-    (attributes.processing     * 0.20) +
-    (attributes.regulation     * 0.075) +
-    (attributes.grit           * 0.075) +
-    (attributes.stewardship    * 0.075);
+  // Delegate phase calculation
+  const phaseScores = getPlayerPhaseScores({ attributes });
 
   const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 0.7 ? "-" : "✓");
-  const phaseGlyphs = `${getGlyph(ipScore)} / ${getGlyph(oopScore)} / ${getGlyph(trScore)}`;
+  const phaseGlyphs = `${getGlyph(phaseScores.ip)} / ${getGlyph(phaseScores.oop)} / ${getGlyph(phaseScores.tr)}`;
 
   // Market Valuation
-  const overallAvg = (ipScore + oopScore + trScore) / 3;
+  const overallAvg = (phaseScores.ip + phaseScores.oop + phaseScores.tr) / 3;
   const tierMult = Math.pow(1.5, (11 - div));
   const val = Math.round((Math.pow(overallAvg / 10, 2.5) * 1200 * tierMult) / 5000) * 5000;
   const wage = Math.max(350, Math.round((val * 0.0025) / 50) * 50);
@@ -126,11 +107,11 @@ function generatePlayer(isGK, div, natCode = null) {
     attributes,
     traits,
     phaseGlyphs,
-    val, wage,
+    val, 
+    wage,
     contractYrs: 1 + Math.floor(Math.random() * 4),
     condition: 90 + Math.floor(Math.random() * 11),
     minutesPlayed: 0,
-    ratingsHistory: [],
     slot: 'RES'
   };
 }
@@ -167,7 +148,7 @@ function resolveTacticalPhaseWeights(tactics = {}) {
 
   // 2. Pressing adjustments
   if (tactics.press === 'low block')        { ip -= 0.04; oop += 0.08; tr -= 0.04; }
-  else if (tactics.press === 'high press')   { ip -= 0.04; oop += 0.04; tr += 0.00; }
+  else if (tactics.press === 'high press')   { ip -= 0.04; oop += 0.04; tr -= 0.00; }
   else if (tactics.press === 'gegenpress')   { ip -= 0.12; oop += 0.04; tr += 0.08; }
 
   // 3. Build-up distribution
@@ -187,15 +168,6 @@ function resolveTacticalPhaseWeights(tactics = {}) {
   };
 }
 
-// Calculate individual player phase power
-function getPlayerPhaseScores(p) {
-  const a = p.attributes;
-  const ip = (a.proprioception * 0.20) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.075) + (a.scanning * 0.20) + (a.processing * 0.15) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
-  const oop = (a.proprioception * 0.075) + (a.dynamicPower * 0.20) + (a.bioenergetics * 0.15) + (a.scanning * 0.15) + (a.processing * 0.075) + (a.regulation * 0.075) + (a.grit * 0.15) + (a.stewardship * 0.125);
-  const tr = (a.proprioception * 0.15) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.20) + (a.scanning * 0.075) + (a.processing * 0.20) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
-  return { ip, oop, tr };
-}
-
 // Evaluate slot suitability based on position zone, blueprint affinities, morphology, and archetype compatibility
 function evaluateSlotFit(player, role, blueprintKey) {
   const scores = getPlayerPhaseScores(player);
@@ -207,55 +179,38 @@ function evaluateSlotFit(player, role, blueprintKey) {
 
   // 1. Role-specific phase baseline & archetype restrictions
   if (role === 'CB') {
-    // CBs need Out of Possession & aerial presence
     baseFit = (scores.oop * 0.70) + (scores.tr * 0.15) + (scores.ip * 0.15);
-
-    // Natural fits
     if (['soldier', 'disrupter', 'anticipator', 'steady_eddy'].includes(arch)) baseFit += 8.0;
-    
-    // Strict bans on non-defenders
     if (['dribblinho', 'artist', 'pocket_player', 'runner_in_behind'].includes(arch)) baseFit -= 20.0;
-
-    // Height checks only valid for players suited to defend
     if (player.morphology.heightCm >= 188) baseFit += 3.0;
     else if (player.morphology.heightCm < 180) baseFit -= 8.0;
 
   } else if (role === 'LB' || role === 'RB') {
-    // Fullbacks need Transition & Bioenergetics
     baseFit = (scores.tr * 0.50) + (scores.oop * 0.35) + (scores.ip * 0.15);
-
-    // Natural fits
     if (['two_way', 'runner_in_behind', 'soldier', 'steady_eddy'].includes(arch)) baseFit += 6.0;
-
-    // Creative central/interior archetypes struggle on the flank
     if (['pocket_player', 'target', 'artist'].includes(arch)) baseFit -= 12.0;
 
   } else if (role === 'DM') {
-    // Defensive mid
     baseFit = (scores.oop * 0.50) + (scores.tr * 0.30) + (scores.ip * 0.20);
     if (['disrupter', 'soldier', 'two_way', 'anticipator'].includes(arch)) baseFit += 8.0;
     if (['dribblinho', 'runner_in_behind', 'target'].includes(arch)) baseFit -= 15.0;
 
   } else if (role === 'CM') {
-    // Central mid: versatile link
     baseFit = (scores.ip * 0.35) + (scores.tr * 0.35) + (scores.oop * 0.30);
     if (['two_way', 'pocket_player', 'anticipator', 'steady_eddy', 'artist'].includes(arch)) baseFit += 6.0;
     if (['target'].includes(arch)) baseFit -= 15.0;
 
   } else if (role === 'AM') {
-    // Attacking mid
     baseFit = (scores.ip * 0.60) + (scores.tr * 0.25) + (scores.oop * 0.15);
     if (['pocket_player', 'artist', 'dribblinho'].includes(arch)) baseFit += 8.0;
     if (['soldier', 'disrupter'].includes(arch)) baseFit -= 12.0;
 
   } else if (['LM', 'RM', 'LW', 'RW'].includes(role)) {
-    // Wide attackers / wingers
     baseFit = (scores.tr * 0.45) + (scores.ip * 0.40) + (scores.oop * 0.15);
     if (['dribblinho', 'runner_in_behind', 'two_way', 'artist'].includes(arch)) baseFit += 7.0;
     if (['soldier', 'target', 'pocket_player'].includes(arch)) baseFit -= 10.0;
 
   } else if (role === 'ST') {
-    // Strikers
     baseFit = (scores.ip * 0.50) + (scores.tr * 0.35) + (scores.oop * 0.15);
     if (['target', 'runner_in_behind', 'pocket_player'].includes(arch)) baseFit += 8.0;
     if (['soldier', 'disrupter', 'steady_eddy'].includes(arch)) baseFit -= 15.0;
@@ -303,18 +258,16 @@ function autoAssignLineup(team) {
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   let availableOutfield = team.squad.filter(p => !p.isGK);
 
-  // Map each outfield slot with its original index (S2 through S11)
   const outfieldSlots = formRoles.slice(1).map((role, idx) => ({
     role,
     slotCode: `S${idx + 2}`
   }));
 
-  // Role priority: lock the spine first so CBs/STs get prime candidates
   const getRolePriority = (role) => {
     if (role === 'CB') return 1;
     if (role === 'ST') return 2;
     if (['DM', 'CM', 'AM'].includes(role)) return 3;
-    return 4; // Flanks: LB, RB, LM, RM, LW, RW
+    return 4;
   };
 
   outfieldSlots.sort((a, b) => getRolePriority(a.role) - getRolePriority(b.role));
@@ -332,7 +285,7 @@ function autoAssignLineup(team) {
     chosen.slot = slot.slotCode;
   }
 
-  // 3. Assign Bench (B1 to B9) - Backup GK first, then overall versatile depth
+  // 3. Assign Bench (B1 to B9)
   const remainingGKs = team.squad.filter(p => p.isGK && p.slot === 'RES');
   let benchIndex = 1;
   if (remainingGKs.length > 0) {
@@ -422,7 +375,6 @@ function buildRoundRobin(teamIds) {
 }
 
 function runRoundSimulation() {
-  // Prevent simulating past the 38-game schedule
   if (state.round > state.maxRounds) {
     alert("Season finished! Click 'START NEW SEASON' to begin the next campaign.");
     return false;
@@ -459,8 +411,7 @@ function runRoundSimulation() {
         return total / starters.length;
       };
 
-      // Match engine calculates composite team output organically from live weighted phases
-      const hPwr = getPhasePower(hStarters, homeTeam.tactics) * 1.06; // 6% Home advantage
+      const hPwr = getPhasePower(hStarters, homeTeam.tactics) * 1.06;
       const aPwr = getPhasePower(aStarters, awayTeam.tactics);
       const hRatio = hPwr / (hPwr + aPwr);
 
@@ -485,8 +436,8 @@ function runRoundSimulation() {
       updateTableRecord(d, homeTeam.id, hg, ag, fix.hxg, fix.axg);
       updateTableRecord(d, awayTeam.id, ag, hg, fix.axg, fix.hxg);
 
-      applyPlayerMinutesAndRatings(homeTeam, hg, ag, fix.hxg, fix.axg);
-      applyPlayerMinutesAndRatings(awayTeam, ag, hg, fix.axg, fix.hxg);
+      applyPlayerMinutes(homeTeam);
+      applyPlayerMinutes(awayTeam);
     });
   }
 
@@ -512,78 +463,29 @@ function updateTableRecord(div, teamId, gf, ga, xg, xga) {
   else { row.l++; row.form.push('L'); }
 }
 
-function applyPlayerMinutesAndRatings(team, gf, ga, xg, xga) {
+function applyPlayerMinutes(team) {
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
   const bench = team.squad.filter(p => p.slot.startsWith('B'));
 
-  // Outfield starters eligible to be substituted (exclude GK at S1)
   const subEligibleStarters = starters.filter(p => p.slot !== 'S1');
-  // Available outfield bench options
   const benchOutfield = bench.filter(p => !p.isGK);
 
-  // Determine number of subs (up to 3-5 subs, standard contemporary rules)
   const maxSubs = Math.min(subEligibleStarters.length, benchOutfield.length, 3 + Math.floor(Math.random() * 3));
-  
-  // Randomly select which starters are substituted off
   const shuffledStarters = [...subEligibleStarters].sort(() => 0.5 - Math.random());
   const substitutedStarters = new Set(shuffledStarters.slice(0, maxSubs).map(p => p.id));
 
-  // Determine individual performance delta based on unit contribution
-  const calcRating = (player, minutes, isSub) => {
-    let rtg = 6.0;
-    const isDefenderOrGk = player.isGK || ['CB', 'LB', 'RB', 'DM'].some(r => player.slot.includes(r));
-
-    // Defensive unit scaling
-    if (isDefenderOrGk) {
-      if (ga === 0) rtg += 1.0; // Clean sheet bonus
-      else rtg -= (ga * 0.35);  // Conceded goals penalty
-      if (xga < 0.8) rtg += 0.4;
-    } else {
-      // Offensive unit scaling
-      rtg += (gf * 0.45);       // Team scoring contribution
-      if (xg > 1.8) rtg += 0.3;
-      if (gf === 0) rtg -= 0.3; // Shutout penalty
-    }
-
-    // Individual quality offset based on composite phase output vs tier baseline
-    const phaseScores = getPlayerPhaseScores(player);
-    const avgPhase = (phaseScores.ip + phaseScores.oop + phaseScores.tr) / 3;
-    const tierMean = DB.tierConfig.base - (team.div * DB.tierConfig.slope);
-    rtg += (avgPhase - tierMean) * 0.08;
-
-    // Small stochastic variance (form on the day)
-    rtg += (Math.random() * 0.8) - 0.4;
-
-    // Minutes dampening: subs have less time to anchor a wild rating
-    if (isSub) {
-      rtg = 6.0 + ((rtg - 6.0) * 0.7);
-    }
-
-    return Math.max(3.0, Math.min(10.0, Math.round(rtg * 10) / 10));
-  };
-
-  // 1. Process Starters
+  // Process Starters
   starters.forEach(p => {
     const isSubbedOff = substitutedStarters.has(p.id);
-    const mins = isSubbedOff ? 65 : 90;
-    p.minutesPlayed += mins;
-
-    const rtg = calcRating(p, mins, false);
-    p.ratingsHistory.push(rtg); // Store full career history (never .shift())
+    p.minutesPlayed += (isSubbedOff ? 65 : 90);
   });
 
-  // 2. Process Substitutes (Conserving 90' per slot)
+  // Process Substitutes
   for (let i = 0; i < maxSubs; i++) {
-    const sub = benchOutfield[i];
-    const mins = 25; // 65' + 25' = 90' exact conservation
-    sub.minutesPlayed += mins;
-
-    const rtg = calcRating(sub, mins, true);
-    sub.ratingsHistory.push(rtg);
+    benchOutfield[i].minutesPlayed += 25;
   }
 }
 
-// Clean rollover without pro/rel gymnastics
 function resetSeasonClean() {
   for (let d = 1; d <= 10; d++) {
     state.tables[d].forEach(r => {
@@ -597,7 +499,6 @@ function resetSeasonClean() {
   Object.values(state.teams).forEach(t => {
     t.squad.forEach(p => {
       p.minutesPlayed = 0;
-      p.ratingsHistory = [];
     });
   });
 
