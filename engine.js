@@ -485,8 +485,8 @@ function runRoundSimulation() {
       updateTableRecord(d, homeTeam.id, hg, ag, fix.hxg, fix.axg);
       updateTableRecord(d, awayTeam.id, ag, hg, fix.axg, fix.hxg);
 
-      applyPlayerMinutesAndRatings(homeTeam, hg, ag);
-      applyPlayerMinutesAndRatings(awayTeam, ag, hg);
+      applyPlayerMinutesAndRatings(homeTeam, hg, ag, fix.hxg, fix.axg);
+      applyPlayerMinutesAndRatings(awayTeam, ag, hg, fix.axg, fix.hxg);
     });
   }
 
@@ -512,24 +512,74 @@ function updateTableRecord(div, teamId, gf, ga, xg, xga) {
   else { row.l++; row.form.push('L'); }
 }
 
-function applyPlayerMinutesAndRatings(team, gf, ga) {
+function applyPlayerMinutesAndRatings(team, gf, ga, xg, xga) {
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
   const bench = team.squad.filter(p => p.slot.startsWith('B'));
 
+  // Outfield starters eligible to be substituted (exclude GK at S1)
+  const subEligibleStarters = starters.filter(p => p.slot !== 'S1');
+  // Available outfield bench options
+  const benchOutfield = bench.filter(p => !p.isGK);
+
+  // Determine number of subs (up to 3-5 subs, standard contemporary rules)
+  const maxSubs = Math.min(subEligibleStarters.length, benchOutfield.length, 3 + Math.floor(Math.random() * 3));
+  
+  // Randomly select which starters are substituted off
+  const shuffledStarters = [...subEligibleStarters].sort(() => 0.5 - Math.random());
+  const substitutedStarters = new Set(shuffledStarters.slice(0, maxSubs).map(p => p.id));
+
+  // Determine individual performance delta based on unit contribution
+  const calcRating = (player, minutes, isSub) => {
+    let rtg = 6.0;
+    const isDefenderOrGk = player.isGK || ['CB', 'LB', 'RB', 'DM'].some(r => player.slot.includes(r));
+
+    // Defensive unit scaling
+    if (isDefenderOrGk) {
+      if (ga === 0) rtg += 1.0; // Clean sheet bonus
+      else rtg -= (ga * 0.35);  // Conceded goals penalty
+      if (xga < 0.8) rtg += 0.4;
+    } else {
+      // Offensive unit scaling
+      rtg += (gf * 0.45);       // Team scoring contribution
+      if (xg > 1.8) rtg += 0.3;
+      if (gf === 0) rtg -= 0.3; // Shutout penalty
+    }
+
+    // Individual quality offset based on composite phase output vs tier baseline
+    const phaseScores = getPlayerPhaseScores(player);
+    const avgPhase = (phaseScores.ip + phaseScores.oop + phaseScores.tr) / 3;
+    const tierMean = DB.tierConfig.base - (team.div * DB.tierConfig.slope);
+    rtg += (avgPhase - tierMean) * 0.08;
+
+    // Small stochastic variance (form on the day)
+    rtg += (Math.random() * 0.8) - 0.4;
+
+    // Minutes dampening: subs have less time to anchor a wild rating
+    if (isSub) {
+      rtg = 6.0 + ((rtg - 6.0) * 0.7);
+    }
+
+    return Math.max(3.0, Math.min(10.0, Math.round(rtg * 10) / 10));
+  };
+
+  // 1. Process Starters
   starters.forEach(p => {
-    p.minutesPlayed += 90;
-    let rtg = Math.max(1, Math.min(10, Math.round((6.0 + (gf * 0.4) - (ga * 0.3) + ((Math.random() * 2) - 1)) * 10) / 10));
-    p.ratingsHistory.push(rtg);
-    if (p.ratingsHistory.length > 5) p.ratingsHistory.shift();
+    const isSubbedOff = substitutedStarters.has(p.id);
+    const mins = isSubbedOff ? 65 : 90;
+    p.minutesPlayed += mins;
+
+    const rtg = calcRating(p, mins, false);
+    p.ratingsHistory.push(rtg); // Store full career history (never .shift())
   });
 
-  const numSubs = Math.min(bench.length, 3 + Math.floor(Math.random() * 3));
-  for (let i = 0; i < numSubs; i++) {
-    const sub = bench[i];
-    sub.minutesPlayed += 25;
-    let rtg = Math.max(1, Math.min(10, Math.round((6.0 + ((Math.random() * 1.5) - 0.7)) * 10) / 10));
+  // 2. Process Substitutes (Conserving 90' per slot)
+  for (let i = 0; i < maxSubs; i++) {
+    const sub = benchOutfield[i];
+    const mins = 25; // 65' + 25' = 90' exact conservation
+    sub.minutesPlayed += mins;
+
+    const rtg = calcRating(sub, mins, true);
     sub.ratingsHistory.push(rtg);
-    if (sub.ratingsHistory.length > 5) sub.ratingsHistory.shift();
   }
 }
 
