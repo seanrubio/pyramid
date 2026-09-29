@@ -375,24 +375,37 @@ function buildRoundRobin(teamIds) {
   const n = teamIds.length;
   const pool = [...teamIds];
 
-  for (let r = 0; r < (n - 1) * 2; r++) {
+  // First half of the season (n - 1 rounds)
+  for (let r = 0; r < n - 1; r++) {
     const roundFixtures = [];
-    const isSecondHalf = r >= (n - 1);
-    const shift = r % (n - 1);
-
+    
     for (let i = 0; i < n / 2; i++) {
-      let home = pool[(shift + i) % (n - 1)];
-      let away = pool[(n - 1 - i + shift) % (n - 1)];
-      if (i === 0) home = pool[n - 1];
+      let t1 = (i === 0) ? pool[n - 1] : pool[(r + i) % (n - 1)];
+      let t2 = pool[(n - 1 - i + r) % (n - 1)];
+
+      // Alternate home/away for the pivot club every round
+      let home = (i === 0 && r % 2 === 1) ? t2 : t1;
+      let away = (i === 0 && r % 2 === 1) ? t1 : t2;
 
       roundFixtures.push({
-        home: isSecondHalf ? away : home,
-        away: isSecondHalf ? home : away,
+        home,
+        away,
         played: false, hg: 0, ag: 0, hxg: 0, axg: 0
       });
     }
     rounds.push(roundFixtures);
   }
+
+  // Second half: mirror the first half with reversed home/away venues
+  for (let r = 0; r < n - 1; r++) {
+    const reverseRound = rounds[r].map(fix => ({
+      home: fix.away,
+      away: fix.home,
+      played: false, hg: 0, ag: 0, hxg: 0, axg: 0
+    }));
+    rounds.push(reverseRound);
+  }
+
   return rounds;
 }
 
