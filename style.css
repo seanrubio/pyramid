@@ -1,136 +1,115 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
-  --bg-core: #0a0e14;
-  --panel-bg: #0f151e;
-  --panel-header: #151d2a;
-  --border-line: #1e293b;
-  --border-focus: #38bdf8;
-  
-  --c-amber: #fbbf24;
-  --c-cyan: #38bdf8;
-  --c-green: #34d399;
-  --c-rose: #f43f5e;
-  --c-text: #f1f5f9;
-  --c-muted: #94a3b8;
-  --c-dim: #475569;
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --amber: #d29922;
+  --red: #f85149;
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background-color: var(--bg-core);
-  color: var(--c-text);
+  background-color: var(--bg);
+  color: var(--text);
   font-family: 'JetBrains Mono', monospace;
   margin: 0;
   padding: 0;
-  letter-spacing: -0.01em;
+  font-size: 12px;
 }
 
-/* Crisp Clean Panel Card */
-.retro-box {
-  background-color: var(--panel-bg);
-  border: 1px solid var(--border-line);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+/* Crisp Basic Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
 }
 
-.retro-box-header {
-  background-color: var(--panel-header);
-  border-bottom: 1px solid var(--border-line);
-  padding: 8px 14px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--c-cyan);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+th, td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
 }
 
-/* Interactive Navigation Tabs */
-.nav-pill {
-  padding: 8px 18px;
-  font-size: 11px;
+th {
+  background-color: #090d13;
+  color: var(--text-muted);
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--c-muted);
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  background: transparent;
-  border-top: none; border-left: none; border-right: none;
-  transition: all 0.15s ease;
+  font-size: 11px;
 }
 
-.nav-pill:hover {
-  color: var(--c-text);
+tr:hover {
   background-color: rgba(255, 255, 255, 0.02);
 }
 
-.nav-pill.active {
-  color: var(--c-amber);
-  border-bottom-color: var(--c-amber);
-  background-color: rgba(251, 191, 36, 0.05);
-}
-
-/* Solid Action Buttons */
-.action-btn {
-  font-family: 'JetBrains Mono', monospace;
+/* Standard Inputs & Controls */
+select, input, button {
+  font-family: inherit;
   font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 6px 14px;
-  background: #1e293b;
-  color: var(--c-text);
-  border: 1px solid #334155;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.action-btn:hover {
-  background: #334155;
-  color: #fff;
-  border-color: var(--c-cyan);
-}
-
-.action-btn-primary {
-  background: #0284c7;
-  color: #fff;
-  border-color: #38bdf8;
-}
-
-.action-btn-primary:hover {
-  background: #0369a1;
-}
-
-/* Mini Bar Graph Meters (1-10 attribute visualizer) */
-.bar-meter-bg {
-  width: 50px;
-  height: 6px;
-  background-color: #1e293b;
-  display: inline-block;
-  vertical-align: middle;
-  border-radius: 1px;
-  overflow: hidden;
-  margin-right: 6px;
-}
-
-.bar-meter-fill {
-  height: 100%;
-  background-color: var(--c-cyan);
-}
-
-/* Dropdown & Input Overhauls */
-select, input {
-  background-color: #080c10;
-  border: 1px solid var(--border-line);
-  color: var(--c-text);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  padding: 5px 8px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 3px;
   outline: none;
 }
 
 select:focus, input:focus {
-  border-color: var(--border-focus);
+  border-color: var(--accent);
+}
+
+button {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  background-color: #21262d;
+  border-color: #8b949e;
+}
+
+button.primary {
+  background-color: #238636;
+  border-color: #2ea043;
+  color: #fff;
+}
+
+button.primary:hover {
+  background-color: #2ea043;
+}
+
+button.danger {
+  background-color: #21262d;
+  border-color: var(--border);
+  color: var(--red);
+}
+
+button.danger:hover {
+  background-color: #b62324;
+  color: #fff;
+}
+
+.panel {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.nav-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 0;
+}
+
+.nav-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
