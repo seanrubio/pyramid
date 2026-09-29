@@ -1,4 +1,4 @@
-// --- NO-FRILLS UI CONTROLLER (8-PILLAR INTEGRATION) ---
+// --- NO-FRILLS UI CONTROLLER (QUALITATIVE SCOUTING LAYOUT) ---
 
 let DB = null;
 let state = null;
@@ -8,22 +8,12 @@ let tableDiv = 10;
 let squadSort = { key: 'slot', asc: true };
 let tableSort = { key: 'pts', asc: false };
 
-// Standardized Unicode Morale Mapping
-const MORALE_MAP = {
-  'Very High': '🤩',
-  'High': '🙂',
-  'OK': '😐',
-  'Low': '🙁',
-  'Very Low': '🤬'
-};
-
 const CURRENCY_SYMBOLS = {
   GBP: '£',
   EUR: '€',
   USD: '$'
 };
 
-// Global Money Formatter
 function formatMoney(amount, isWage = false) {
   const cfg = (state && state.config) ? state.config : { currency: 'GBP', wageCadence: 'weekly' };
   const sym = CURRENCY_SYMBOLS[cfg.currency] || '£';
@@ -34,15 +24,9 @@ function formatMoney(amount, isWage = false) {
     else if (cfg.wageCadence === 'yearly') adjusted = Math.round(amount * 52);
   }
 
-  if (adjusted >= 10000000) {
-    return `${sym}${Math.round(adjusted / 1000000)}M`;
-  }
-  if (adjusted >= 1000000) {
-    return `${sym}${(adjusted / 1000000).toFixed(1)}M`;
-  }
-  if (adjusted >= 1000) {
-    return `${sym}${(adjusted / 1000).toFixed(0)}k`;
-  }
+  if (adjusted >= 10000000) return `${sym}${Math.round(adjusted / 1000000)}M`;
+  if (adjusted >= 1000000) return `${sym}${(adjusted / 1000000).toFixed(1)}M`;
+  if (adjusted >= 1000) return `${sym}${(adjusted / 1000).toFixed(0)}k`;
   return `${sym}${adjusted.toLocaleString()}`;
 }
 
@@ -141,7 +125,6 @@ function handleCreateClub(e) {
     rep: 15, budget: 450000, wageBudget: 18000,
     formation: '4-4-2 Flat',
     tactics: { mentality: 'balanced', press: 'mid block', buildGk: 'mixed', buildMid: 'mixed', chanceCreation: 'mixed' },
-    trainingIntensity: 'normal', trainingRegimen: 'balanced',
     isUser: true, squad: createFullSquad(10, country)
   };
 
@@ -153,7 +136,6 @@ function handleCreateClub(e) {
       wageBudget: Math.round(Math.pow(1.5, 11 - city.div) * 12000),
       formation: '4-4-2 Flat',
       tactics: { mentality: 'balanced', press: 'mid block', buildGk: 'mixed', buildMid: 'mixed', chanceCreation: 'mixed' },
-      trainingIntensity: 'normal', trainingRegimen: 'balanced',
       isUser: false, squad: createFullSquad(city.div, city.country)
     };
   });
@@ -237,9 +219,8 @@ function getSlotRank(slot) {
   return 999;
 }
 
-// Helper to render colored trait tags
 function renderTraitBadges(traits = []) {
-  if (!traits.length) return '';
+  if (!traits.length) return '<span style="color: var(--text-muted);">-</span>';
   return traits.map(t => {
     const isAsset = t.startsWith('[+');
     const label = t.replace(/[\[\]\+\-]/g, '');
@@ -247,7 +228,7 @@ function renderTraitBadges(traits = []) {
   }).join('');
 }
 
-// --- SQUAD DIRECTORY ---
+// --- SQUAD DIRECTORY (QUALITATIVE) ---
 function renderSquadView(container) {
   const team = state.teams[state.userTeamId];
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
@@ -271,20 +252,12 @@ function renderSquadView(container) {
       <table>
         <thead>
           <tr>
-            <th onclick="sortSquad('slot')" style="cursor: pointer;">Slot</th>
-            <th onclick="sortSquad('name')" style="cursor: pointer;">Player / Archetype</th>
-            <th>Pos</th>
-            <th style="text-align: center;">Size</th>
-            <th onclick="sortSquad('proprioception')" style="cursor: pointer; text-align: center;" title="Proprioception & Kinesthesia">PRO</th>
-            <th onclick="sortSquad('dynamicPower')" style="cursor: pointer; text-align: center;" title="Dynamic Power & Braking">POW</th>
-            <th onclick="sortSquad('bioenergetics')" style="cursor: pointer; text-align: center;" title="Bioenergetics">BIO</th>
-            <th onclick="sortSquad('scanning')" style="cursor: pointer; text-align: center;" title="Scanning & Visual Extraction">SCA</th>
-            <th onclick="sortSquad('processing')" style="cursor: pointer; text-align: center;" title="Processing Speed">PRC</th>
-            <th onclick="sortSquad('regulation')" style="cursor: pointer; text-align: center;" title="Autonomic Regulation">REG</th>
-            <th onclick="sortSquad('grit')" style="cursor: pointer; text-align: center;" title="Psychological Grit">GRT</th>
-            <th onclick="sortSquad('stewardship')" style="cursor: pointer; text-align: center;" title="Self-Stewardship">STE</th>
-            <th style="text-align: center;" title="Phase Glyphs (Hardware / Software / OS)">HW/SW/OS</th>
-            <th style="text-align: center;">Morale</th>
+            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 85px;">Slot</th>
+            <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
+            <th onclick="sortSquad('archetypeName')" style="cursor: pointer;">Archetype</th>
+            <th>Morphology</th>
+            <th>Traits</th>
+            <th style="text-align: center;" title="Phase Evaluation (In Possession / Out of Possession / Transitions)">IP / OOP / TR</th>
             <th style="text-align: center;">Form</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
             <th style="text-align: right;">Wage</th>
@@ -293,9 +266,8 @@ function renderSquadView(container) {
         <tbody>
           ${team.squad.map(p => {
             const form = p.ratingsHistory.length ? (p.ratingsHistory.reduce((a, b) => a + b, 0) / p.ratingsHistory.length).toFixed(1) : '-';
-            const emoji = MORALE_MAP[p.morale] || '😐';
-            const morph = p.morphology ? `${p.morphology.heightCm}cm<br><span class="sub-meta">${p.morphology.weightKg}kg</span>` : '-';
-            
+            const morph = `${p.morphology.heightCm}cm / ${p.morphology.weightKg}kg`;
+
             return `
               <tr>
                 <td>
@@ -303,23 +275,13 @@ function renderSquadView(container) {
                     ${allOpts.map(o => `<option value="${o.val}" ${p.slot === o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
                   </select>
                 </td>
-                <td>
-                  <div style="font-weight: 600; color: var(--text);">${p.name}</div>
-                  <div class="sub-meta">${p.archetypeName || 'Generalist'}</div>
-                  <div style="margin-top: 2px;">${renderTraitBadges(p.traits)}</div>
+                <td style="font-weight: 600; color: var(--text);">
+                  ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
                 </td>
-                <td style="color: var(--accent);">${p.positions.join('/')}</td>
-                <td style="text-align: center; font-size: 11px;">${morph}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.proprioception}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.dynamicPower}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.bioenergetics}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.scanning}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.processing}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.regulation}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.grit}</td>
-                <td style="text-align: center; font-weight: 600;">${p.attributes.stewardship}</td>
-                <td style="text-align: center;" class="glyph-tag">${p.profileGlyphs || '✓/✓/✓'}</td>
-                <td style="text-align: center; font-size: 13px;" title="${p.morale}">${emoji}</td>
+                <td style="color: var(--text);">${p.archetypeName}</td>
+                <td style="color: var(--text-muted); font-size: 11px;">${morph}</td>
+                <td>${renderTraitBadges(p.traits)}</td>
+                <td style="text-align: center;" class="glyph-tag"><strong>${p.phaseGlyphs}</strong></td>
                 <td style="text-align: center; color: var(--accent);">${form}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
                 <td style="text-align: right;">${formatMoney(p.wage, true)}</td>
@@ -370,10 +332,8 @@ function sortSquad(key) {
       return squadSort.asc ? rankA - rankB : rankB - rankA;
     }
 
-    // Check if sorting by an 8-pillar attribute
-    let valA = a.attributes && a.attributes[squadSort.key] !== undefined ? a.attributes[squadSort.key] : a[squadSort.key];
-    let valB = b.attributes && b.attributes[squadSort.key] !== undefined ? b.attributes[squadSort.key] : b[squadSort.key];
-
+    let valA = a[squadSort.key];
+    let valB = b[squadSort.key];
     if (typeof valA === 'string') return squadSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
     return squadSort.asc ? (valA || 0) - (valB || 0) : (valB || 0) - (valA || 0);
   });
@@ -501,13 +461,13 @@ function renderTransfersView(container) {
       <table>
         <thead>
           <tr>
-            <th>Player / Archetype</th>
-            <th>Pos</th>
+            <th>Player</th>
+            <th>Archetype</th>
             <th>Club</th>
             <th style="text-align: center;">Div</th>
-            <th style="text-align: center;">Size</th>
-            <th style="text-align: center;">Traits</th>
-            <th style="text-align: center;">HW/SW/OS</th>
+            <th>Morphology</th>
+            <th>Traits</th>
+            <th style="text-align: center;">IP / OOP / TR</th>
             <th style="text-align: right;">Valuation</th>
             <th style="text-align: center;">Action</th>
           </tr>
@@ -515,16 +475,15 @@ function renderTransfersView(container) {
         <tbody>
           ${targets.map(p => `
             <tr>
-              <td>
-                <span style="font-weight: 600;">${p.name}</span>
-                <span class="sub-meta">${p.archetypeName || 'Generalist'}</span>
+              <td style="font-weight: 600;">
+                ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
               </td>
-              <td style="color: var(--accent);">${p.positions.join('/')}</td>
+              <td style="color: var(--text);">${p.archetypeName}</td>
               <td style="color: var(--text-muted);">${p.club}</td>
               <td style="text-align: center;">${p.div}</td>
-              <td style="text-align: center; font-size: 11px;">${p.morphology ? `${p.morphology.heightCm}cm` : '-'}</td>
-              <td style="text-align: center;">${renderTraitBadges(p.traits)}</td>
-              <td style="text-align: center;" class="glyph-tag">${p.profileGlyphs || '✓/✓/✓'}</td>
+              <td style="color: var(--text-muted); font-size: 11px;">${p.morphology.heightCm}cm / ${p.morphology.weightKg}kg</td>
+              <td>${renderTraitBadges(p.traits)}</td>
+              <td style="text-align: center;" class="glyph-tag"><strong>${p.phaseGlyphs}</strong></td>
               <td style="text-align: right; color: var(--green);">${formatMoney(p.val)}</td>
               <td style="text-align: center;">
                 <button onclick="signTarget('${p.id}', '${p.clubId}')" class="primary" style="padding: 2px 8px;">SIGN</button>
