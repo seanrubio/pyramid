@@ -213,14 +213,18 @@ function renderLayout() {
         <div style="display: flex; align-items: center; gap: 12px;">
           <strong style="color: #fff; font-size: 13px;">${userTeam.name}</strong>
           <span style="color: var(--accent);">DIV ${userTeam.div}</span>
-          <span style="color: var(--text-muted);">S${state.season} • ROUND ${Math.min(state.round, state.maxRounds)}/${state.maxRounds}</span>
+          <span style="color: var(--text-muted);">
+            S${state.season} • ${isSeasonOver ? '<strong style="color: var(--accent);">SEASON COMPLETE</strong>' : `ROUND ${state.round}/${state.maxRounds}`}
+          </span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
           <span>BALANCE: <strong style="color: var(--green);">${formatMoney(userTeam.budget)}</strong></span>
           ${isSeasonOver ? `
-            <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
-          ` : `
-            <button onclick="handleSimRound()" class="primary">PLAY ROUND</button>
+        ${isSeasonOver ? `
+          <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
+        ` : `
+          <button onclick="handleSimRound()" class="primary">${state.round === state.maxRounds ? 'PLAY FINAL ROUND' : 'PLAY ROUND'}</button>
+        `}
           `}
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
