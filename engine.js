@@ -74,15 +74,43 @@ function generatePlayer(isGK, div, natCode = null) {
   const bmi = +(randomGaussian(baseMorph.bmiMean + archetype.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
   const weightKg = Math.round(bmi * Math.pow(heightCm / 100, 2));
 
-  // Phase Glyphs: IP / OOP / TR (calibrated for 3-4 pillar averages)
-  const getGlyph = (val) => (val >= tierMean + 1.8 ? "+" : val <= tierMean - 1.8 ? "-" : "✓");
-  const ipAvg = (attributes.proprioception + attributes.scanning + attributes.processing) / 3;
-  const oopAvg = (attributes.dynamicPower + attributes.grit + attributes.scanning) / 3;
-  const trAvg = (attributes.bioenergetics + attributes.processing + attributes.regulation + attributes.stewardship) / 4;
-  const phaseGlyphs = `${getGlyph(ipAvg)} / ${getGlyph(oopAvg)} / ${getGlyph(trAvg)}`;
+  // Phase Composites across all 8 pillars (Calibrated Mid-Contrast Matrix)
+  const ipScore = 
+    (attributes.proprioception * 0.20) +
+    (attributes.dynamicPower   * 0.15) +
+    (attributes.bioenergetics  * 0.075) +
+    (attributes.scanning       * 0.20) +
+    (attributes.processing     * 0.15) +
+    (attributes.regulation     * 0.075) +
+    (attributes.grit           * 0.075) +
+    (attributes.stewardship    * 0.075);
+
+  const oopScore = 
+    (attributes.proprioception * 0.075) +
+    (attributes.dynamicPower   * 0.20) +
+    (attributes.bioenergetics  * 0.15) +
+    (attributes.scanning       * 0.15) +
+    (attributes.processing     * 0.075) +
+    (attributes.regulation     * 0.075) +
+    (attributes.grit           * 0.15) +
+    (attributes.stewardship    * 0.125);
+
+  const trScore = 
+    (attributes.proprioception * 0.15) +
+    (attributes.dynamicPower   * 0.15) +
+    (attributes.bioenergetics  * 0.20) +
+    (attributes.scanning       * 0.075) +
+    (attributes.processing     * 0.20) +
+    (attributes.regulation     * 0.075) +
+    (attributes.grit           * 0.075) +
+    (attributes.stewardship    * 0.075);
+
+  // Glyph Trigger: ±1.5 points relative to tier mean
+  const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 1.2 ? "-" : "✓");
+  const phaseGlyphs = `${getGlyph(ipScore)} / ${getGlyph(oopScore)} / ${getGlyph(trScore)}`;
 
   // Market Valuation
-  const overallAvg = (ipAvg + oopAvg + trAvg) / 3;
+  const overallAvg = (ipScore + oopScore + trScore) / 3;
   const tierMult = Math.pow(1.5, (11 - div));
   const val = Math.round((Math.pow(overallAvg / 10, 2.5) * 1200 * tierMult) / 5000) * 5000;
   const wage = Math.max(350, Math.round((val * 0.0025) / 50) * 50);
@@ -242,10 +270,11 @@ function runRoundSimulation() {
       const getPhasePower = (starters) => {
         if (starters.length === 0) return 40;
         const total = starters.reduce((acc, p) => {
-          const ip = (p.attributes.proprioception + p.attributes.scanning + p.attributes.processing) / 3;
-          const oop = (p.attributes.dynamicPower + p.attributes.grit + p.attributes.scanning) / 3;
-          const tr = (p.attributes.bioenergetics + p.attributes.processing + p.attributes.regulation + p.attributes.stewardship) / 4;
-          return acc + (ip * 0.35 + oop * 0.35 + tr * 0.30);
+          const a = p.attributes;
+          const ip = (a.proprioception * 0.20) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.075) + (a.scanning * 0.20) + (a.processing * 0.15) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
+          const oop = (a.proprioception * 0.075) + (a.dynamicPower * 0.20) + (a.bioenergetics * 0.15) + (a.scanning * 0.15) + (a.processing * 0.075) + (a.regulation * 0.075) + (a.grit * 0.15) + (a.stewardship * 0.125);
+          const tr = (a.proprioception * 0.15) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.20) + (a.scanning * 0.075) + (a.processing * 0.20) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
+          return acc + (ip * 0.38 + oop * 0.38 + tr * 0.24);
         }, 0);
         return total / starters.length;
       };
