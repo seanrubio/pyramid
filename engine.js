@@ -1,4 +1,4 @@
-// --- SIMULATION & RULES ENGINE ---
+// --- SIMULATION ENGINE (FOUNDATIONS RESTORED) ---
 
 const POS_GROUPS = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'ST'];
 const SECONDARY_MAP = {
@@ -8,62 +8,15 @@ const SECONDARY_MAP = {
 };
 
 const FORMATIONS = {
-  '4-4-2 Flat': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'LB', x: 15, y: 70 }, { role: 'CB1', x: 38, y: 72 }, { role: 'CB2', x: 62, y: 72 }, { role: 'RB', x: 85, y: 70 },
-    { role: 'LM', x: 15, y: 46 }, { role: 'CM1', x: 38, y: 48 }, { role: 'CM2', x: 62, y: 48 }, { role: 'RM', x: 85, y: 46 },
-    { role: 'ST1', x: 38, y: 22 }, { role: 'ST2', x: 62, y: 22 }
-  ],
-  '4-4-2 Diamond': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'LB', x: 15, y: 70 }, { role: 'CB1', x: 38, y: 72 }, { role: 'CB2', x: 62, y: 72 }, { role: 'RB', x: 85, y: 70 },
-    { role: 'DM', x: 50, y: 58 }, { role: 'LM', x: 20, y: 45 }, { role: 'RM', x: 80, y: 45 }, { role: 'AM', x: 50, y: 35 },
-    { role: 'ST1', x: 38, y: 18 }, { role: 'ST2', x: 62, y: 18 }
-  ],
-  '4-2-3-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'LB', x: 15, y: 70 }, { role: 'CB1', x: 38, y: 72 }, { role: 'CB2', x: 62, y: 72 }, { role: 'RB', x: 85, y: 70 },
-    { role: 'DM1', x: 38, y: 55 }, { role: 'DM2', x: 62, y: 55 },
-    { role: 'LW', x: 18, y: 34 }, { role: 'AM', x: 50, y: 32 }, { role: 'RW', x: 82, y: 34 },
-    { role: 'ST', x: 50, y: 18 }
-  ],
-  '4-1-2-3': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'LB', x: 15, y: 70 }, { role: 'CB1', x: 38, y: 72 }, { role: 'CB2', x: 62, y: 72 }, { role: 'RB', x: 85, y: 70 },
-    { role: 'DM', x: 50, y: 56 }, { role: 'CM1', x: 35, y: 44 }, { role: 'CM2', x: 65, y: 44 },
-    { role: 'LW', x: 18, y: 22 }, { role: 'ST', x: 50, y: 18 }, { role: 'RW', x: 82, y: 22 }
-  ],
-  '3-5-2': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'CB1', x: 25, y: 72 }, { role: 'CB2', x: 50, y: 74 }, { role: 'CB3', x: 75, y: 72 },
-    { role: 'LWB', x: 12, y: 48 }, { role: 'DM', x: 50, y: 56 }, { role: 'CM1', x: 36, y: 44 }, { role: 'CM2', x: 64, y: 44 }, { role: 'RWB', x: 88, y: 48 },
-    { role: 'ST1', x: 38, y: 20 }, { role: 'ST2', x: 62, y: 20 }
-  ],
-  '3-4-3': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'CB1', x: 25, y: 72 }, { role: 'CB2', x: 50, y: 74 }, { role: 'CB3', x: 75, y: 72 },
-    { role: 'LM', x: 15, y: 48 }, { role: 'CM1', x: 38, y: 50 }, { role: 'CM2', x: 62, y: 50 }, { role: 'RM', x: 85, y: 48 },
-    { role: 'LW', x: 20, y: 22 }, { role: 'ST', x: 50, y: 18 }, { role: 'RW', x: 80, y: 22 }
-  ],
-  '4-3-2-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'LB', x: 15, y: 70 }, { role: 'CB1', x: 38, y: 72 }, { role: 'CB2', x: 62, y: 72 }, { role: 'RB', x: 85, y: 70 },
-    { role: 'CM1', x: 25, y: 50 }, { role: 'DM', x: 50, y: 54 }, { role: 'CM2', x: 75, y: 50 },
-    { role: 'AM1', x: 35, y: 32 }, { role: 'AM2', x: 65, y: 32 },
-    { role: 'ST', x: 50, y: 18 }
-  ],
-  '4-5-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'LB', x: 15, y: 70 }, { role: 'CB1', x: 38, y: 72 }, { role: 'CB2', x: 62, y: 72 }, { role: 'RB', x: 85, y: 70 },
-    { role: 'LM', x: 15, y: 45 }, { role: 'CM1', x: 35, y: 48 }, { role: 'DM', x: 50, y: 54 }, { role: 'CM2', x: 65, y: 48 }, { role: 'RM', x: 85, y: 45 },
-    { role: 'ST', x: 50, y: 18 }
-  ],
-  '5-4-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'LWB', x: 12, y: 68 }, { role: 'CB1', x: 30, y: 72 }, { role: 'CB2', x: 50, y: 74 }, { role: 'CB3', x: 70, y: 72 }, { role: 'RWB', x: 88, y: 68 },
-    { role: 'LM', x: 18, y: 44 }, { role: 'CM1', x: 38, y: 46 }, { role: 'CM2', x: 62, y: 46 }, { role: 'RM', x: 82, y: 44 },
-    { role: 'ST', x: 50, y: 18 }
-  ]
+  '4-4-2 Flat': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'],
+  '4-4-2 Diamond': ['GK', 'LB', 'CB', 'CB', 'RB', 'DM', 'LM', 'RM', 'AM', 'ST', 'ST'],
+  '4-2-3-1': ['GK', 'LB', 'CB', 'CB', 'RB', 'DM', 'DM', 'LW', 'AM', 'RW', 'ST'],
+  '4-1-2-3': ['GK', 'LB', 'CB', 'CB', 'RB', 'DM', 'CM', 'CM', 'LW', 'ST', 'RW'],
+  '3-5-2': ['GK', 'CB', 'CB', 'CB', 'LB', 'DM', 'CM', 'CM', 'RB', 'ST', 'ST'],
+  '3-4-3': ['GK', 'CB', 'CB', 'CB', 'LM', 'CM', 'CM', 'RM', 'LW', 'ST', 'RW'],
+  '4-3-2-1': ['GK', 'LB', 'CB', 'CB', 'RB', 'CM', 'DM', 'CM', 'AM', 'AM', 'ST'],
+  '4-5-1': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'DM', 'CM', 'RM', 'ST'],
+  '5-4-1': ['GK', 'LB', 'CB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST']
 };
 
 function getCountry(code) {
@@ -129,28 +82,35 @@ function createFullSquad(div, primaryCountryCode) {
 }
 
 function autoAssignLineup(team) {
-  const formSlots = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
+  const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   team.squad.forEach(p => p.slot = 'RES');
   const available = [...team.squad];
 
-  formSlots.forEach((slotInfo, index) => {
-    const slotKey = `S${index + 1}`;
-    const baseRole = slotInfo.role.replace(/[0-9]/g, '');
-
+  formRoles.forEach((role, idx) => {
+    const slotKey = `S${idx + 1}`;
     available.sort((a, b) => {
-      const aFit = a.positions.includes(baseRole) ? 10 : 0;
-      const bFit = b.positions.includes(baseRole) ? 10 : 0;
+      const aFit = a.positions.includes(role) ? 10 : 0;
+      const bFit = b.positions.includes(role) ? 10 : 0;
       return ((b.technique + b.decisionMaking + b.athleticism) + bFit) - ((a.technique + a.decisionMaking + a.athleticism) + aFit);
     });
-
-    if (available.length > 0) {
-      available.shift().slot = slotKey;
-    }
+    if (available.length > 0) available.shift().slot = slotKey;
   });
 
   for (let b = 1; b <= 9; b++) {
     if (available.length > 0) available.shift().slot = `B${b}`;
   }
+}
+
+// Validation Guard: Ensure valid 11 starters and a goalkeeper
+function validateLineup(team) {
+  const starters = team.squad.filter(p => p.slot.startsWith('S'));
+  if (starters.length !== 11) return { valid: false, error: `Lineup incomplete: ${starters.length}/11 starters assigned.` };
+
+  // Check if at least one player on the pitch has GK proficiency
+  const hasGk = starters.some(p => p.positions.includes('GK'));
+  if (!hasGk) return { valid: false, error: 'No goalkeeper assigned in starting XI.' };
+
+  return { valid: true };
 }
 
 function generateFixtures(teams) {
@@ -188,10 +148,30 @@ function buildRoundRobin(teamIds) {
   return rounds;
 }
 
+// Tactical Modifier Multipliers
+function getTacticalModifiers(tactics) {
+  let attMod = 1.0;
+  let defMod = 1.0;
+
+  // Mentality
+  if (tactics.mentality === 'park the bus') { attMod *= 0.70; defMod *= 1.30; }
+  else if (tactics.mentality === 'defensive') { attMod *= 0.85; defMod *= 1.15; }
+  else if (tactics.mentality === 'attacking') { attMod *= 1.15; defMod *= 0.88; }
+  else if (tactics.mentality === 'overload') { attMod *= 1.30; defMod *= 0.75; }
+
+  // Pressing
+  if (tactics.press === 'high press' || tactics.press === 'gegenpress') { attMod *= 1.08; defMod *= 0.95; }
+  else if (tactics.press === 'low block') { attMod *= 0.92; defMod *= 1.10; }
+
+  return { attMod, defMod };
+}
+
 function runRoundSimulation() {
-  if (state.round > state.maxRounds) {
-    handleSeasonEnd();
-    return;
+  const userTeam = state.teams[state.userTeamId];
+  const validation = validateLineup(userTeam);
+  if (!validation.valid) {
+    alert(`[LINEUP ERROR] ${validation.error}`);
+    return false;
   }
 
   for (let d = 1; d <= 10; d++) {
@@ -207,8 +187,11 @@ function runRoundSimulation() {
 
       const getPower = (starters) => starters.length === 0 ? 20 : starters.reduce((acc, p) => acc + p.technique + p.decisionMaking + p.athleticism, 0) / starters.length;
 
-      const hPwr = getPower(hStarters) * 1.08;
-      const aPwr = getPower(aStarters);
+      const hMods = getTacticalModifiers(homeTeam.tactics);
+      const aMods = getTacticalModifiers(awayTeam.tactics);
+
+      const hPwr = (getPower(hStarters) * 1.06) * hMods.attMod * (1 / aMods.defMod);
+      const aPwr = getPower(aStarters) * aMods.attMod * (1 / hMods.defMod);
       const hRatio = hPwr / (hPwr + aPwr);
 
       const hxg = Math.max(0.2, (hRatio * 2.8) + (Math.random() * 0.8 - 0.4));
@@ -239,6 +222,7 @@ function runRoundSimulation() {
 
   state.round++;
   saveGameState();
+  return true;
 }
 
 function updateTableRecord(div, teamId, gf, ga, xg, xga) {
@@ -269,37 +253,13 @@ function applyPlayerMinutesAndRatings(team, gf, ga) {
     if (p.ratingsHistory.length > 5) p.ratingsHistory.shift();
   });
 
-  const subsUsed = bench.slice(0, 3 + Math.floor(Math.random() * 3));
-  subsUsed.forEach(p => {
-    p.minutesPlayed += 25;
+  // Pick logical subs
+  const numSubs = Math.min(bench.length, 3 + Math.floor(Math.random() * 3));
+  for (let i = 0; i < numSubs; i++) {
+    const sub = bench[i];
+    sub.minutesPlayed += 25;
     let rtg = Math.max(1, Math.min(10, Math.round((6.0 + ((Math.random() * 1.5) - 0.7)) * 10) / 10));
-    p.ratingsHistory.push(rtg);
-    if (p.ratingsHistory.length > 5) p.ratingsHistory.shift();
-  });
-}
-
-function handleSeasonEnd() {
-  alert(`Season ${state.season} Complete! Processing pyramid promotions & relegations.`);
-  for (let d = 1; d <= 9; d++) {
-    const topTier = [...state.tables[d]].sort((a, b) => b.pts - a.pts || b.gd - a.gd);
-    const bottomTier = [...state.tables[d + 1]].sort((a, b) => b.pts - a.pts || b.gd - a.gd);
-
-    topTier.slice(17, 20).forEach(r => state.teams[r.teamId].div = d + 1);
-    bottomTier.slice(0, 3).forEach(p => state.teams[p.teamId].div = d);
+    sub.ratingsHistory.push(rtg);
+    if (sub.ratingsHistory.length > 5) sub.ratingsHistory.shift();
   }
-
-  state.season++;
-  state.round = 1;
-
-  for (let d = 1; d <= 10; d++) {
-    const divTeams = Object.values(state.teams).filter(t => t.div === d);
-    state.tables[d] = divTeams.map(t => ({
-      teamId: t.id, name: t.name,
-      p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0,
-      xg: 0.0, xga: 0.0, xgd: 0.0, form: []
-    }));
-  }
-
-  state.fixtures = generateFixtures(state.teams);
-  saveGameState();
 }
