@@ -141,6 +141,7 @@ function handleCreateClub(e) {
   const userTeamId = 'club_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const teams = {};
 
+// User Team: standard baseline, no forced blueprint assignment
   teams[userTeamId] = {
     id: userTeamId, name, country, div: 10, stadium,
     rep: 15, budget: 450000, wageBudget: 18000,
@@ -149,6 +150,7 @@ function handleCreateClub(e) {
     isUser: true, squad: createFullSquad(10, country)
   };
 
+  // AI Teams: stamped directly with their city's tactical blueprint
   DB.cities.forEach(city => {
     const tid = 'club_' + city.id;
     teams[tid] = {
@@ -156,7 +158,14 @@ function handleCreateClub(e) {
       rep: city.rep, budget: Math.round(Math.pow(1.5, 11 - city.div) * 200000),
       wageBudget: Math.round(Math.pow(1.5, 11 - city.div) * 12000),
       formation: '4-4-2 Flat',
-      tactics: { mentality: 'balanced', press: 'mid block', buildGk: 'mixed', buildMid: 'mixed', chanceCreation: 'mixed' },
+      tactics: { 
+        blueprint: city.blueprint || 'direct_aerial',
+        mentality: 'balanced', 
+        press: 'mid block', 
+        buildGk: 'mixed', 
+        buildMid: 'mixed', 
+        chanceCreation: 'mixed' 
+      },
       isUser: false, squad: createFullSquad(city.div, city.country)
     };
   });
