@@ -52,8 +52,8 @@ function generatePlayer(isGK, div, natCode = null) {
   const traits = [];
 
   // Asymmetric thresholds matching the survival floor (+1.75 peak / -1.25 floor)
-  const assetCutoff = 1.50 * DB.tierConfig.archetypeSigma;
-  const liabilityCutoff = 1.10 * DB.tierConfig.archetypeSigma;
+  const assetCutoff = 1.65 * DB.tierConfig.archetypeSigma;
+  const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
 
   // 8 MECE Pillars
   for (const [pillar, weight] of Object.entries(archetype.weights)) {
