@@ -299,7 +299,7 @@ function autoAssignLineup(team) {
     availableKeepers[0].slot = 'S1';
   }
 
-// 2. Assign Outfield Starters (Spine First)
+  // 2. Assign Outfield Starters (Spine First)
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   let availableOutfield = team.squad.filter(p => !p.isGK);
 
@@ -372,60 +372,62 @@ function generateFixtures(teams) {
 
 function buildRoundRobin(teamIds) {
   const n = teamIds.length;
-  let teams = [...teamIds];
+  let pool = [...teamIds];
 
-  const firstHalf = [];
+  const rounds = [];
+  const halfRounds = n - 1;
+  const matchesPerRound = n / 2;
 
-  // Generate n - 1 rounds for first half
-  for (let r = 0; r < n - 1; r++) {
+  for (let r = 0; r < halfRounds; r++) {
     const roundFixtures = [];
 
-    for (let i = 0; i < n / 2; i++) {
-      let home = teams[i];
-      let away = teams[n - 1 - i];
+    for (let i = 0; i < matchesPerRound; i++) {
+      let t1 = pool[i];
+      let t2 = pool[n - 1 - i];
 
-      // Alternate the anchor match (slot 0) each round
-      if (i === 0 && r % 2 === 1) {
-        [home, away] = [away, home];
-      } else if (i > 0 && (i + r) % 2 === 1) {
-        // Interleave remaining pairs so all clubs alternate H/A
-        [home, away] = [away, home];
+      let home = t1;
+      let away = t2;
+
+      if (i === 0) {
+        if (r % 2 === 1) { home = t2; away = t1; }
+      } else {
+        if ((i + r) % 2 === 1) { home = t2; away = t1; }
       }
 
       roundFixtures.push({
-        home,
-        away,
-        played: false,
-        hg: 0,
-        ag: 0,
-        hxg: 0,
-        axg: 0
+        home, away, played: false,
+        hg: 0, ag: 0, hxg: 0, axg: 0
       });
     }
 
-    firstHalf.push(roundFixtures);
+    rounds.push(roundFixtures);
 
-    // Rotate elements, keeping index 0 fixed (standard polygon method)
-    teams = [teams[0], teams[n - 1], ...teams.slice(1, n - 1)];
+    const fixed = pool[0];
+    const rest = pool.slice(1);
+    const last = rest.pop();
+    pool = [fixed, last, ...rest];
   }
 
-  // Second half: identical matchups with inverted venues
-  const secondHalf = firstHalf.map(round => 
-    round.map(fix => ({
+  for (let r = 0; r < halfRounds; r++) {
+    const reverseRound = rounds[r].map(fix => ({
       home: fix.away,
       away: fix.home,
       played: false,
-      hg: 0,
-      ag: 0,
-      hxg: 0,
-      axg: 0
-    }))
-  );
+      hg: 0, ag: 0, hxg: 0, axg: 0
+    }));
+    rounds.push(reverseRound);
+  }
 
-  return [...firstHalf, ...secondHalf];
+  return rounds;
 }
 
 function runRoundSimulation() {
+  // Prevent simulating past the 38-game schedule
+  if (state.round > state.maxRounds) {
+    alert("Season finished! Click 'START NEW SEASON' to begin the next campaign.");
+    return false;
+  }
+
   const userTeam = state.teams[state.userTeamId];
   const validation = validateLineup(userTeam);
   if (!validation.valid) {
@@ -529,4 +531,30 @@ function applyPlayerMinutesAndRatings(team, gf, ga) {
     sub.ratingsHistory.push(rtg);
     if (sub.ratingsHistory.length > 5) sub.ratingsHistory.shift();
   }
+}
+
+// Clean rollover without pro/rel gymnastics
+function resetSeasonClean() {
+  for (let d = 1; d <= 10; d++) {
+    state.tables[d].forEach(r => {
+      r.p = 0; r.w = 0; r.d = 0; r.l = 0;
+      r.gf = 0; r.ga = 0; r.gd = 0; r.pts = 0;
+      r.xg = 0.0; r.xga = 0.0; r.xgd = 0.0;
+      r.form = [];
+    });
+  }
+
+  Object.values(state.teams).forEach(t => {
+    t.squad.forEach(p => {
+      p.minutesPlayed = 0;
+      p.ratingsHistory = [];
+    });
+  });
+
+  state.fixtures = generateFixtures(state.teams);
+  state.season++;
+  state.round = 1;
+
+  saveGameState();
+  return true;
 }
