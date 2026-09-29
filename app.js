@@ -219,7 +219,6 @@ function renderLayout() {
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
           <span>BALANCE: <strong style="color: var(--green);">${formatMoney(userTeam.budget)}</strong></span>
-          ${isSeasonOver ? `
         ${isSeasonOver ? `
           <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
         ` : `
