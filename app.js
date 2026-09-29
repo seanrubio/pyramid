@@ -143,7 +143,6 @@ function handleCreateClub(e) {
   const userTeamId = 'club_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const teams = {};
 
-  // User Team: standard baseline, no forced blueprint assignment
   teams[userTeamId] = {
     id: userTeamId, name, country, div: 10, stadium,
     rep: 15, budget: 450000, wageBudget: 18000,
@@ -152,7 +151,6 @@ function handleCreateClub(e) {
     isUser: true, squad: createFullSquad(10, country)
   };
 
-  // AI Teams: stamped directly with their city's tactical blueprint
   DB.cities.forEach(city => {
     const tid = 'club_' + city.id;
     teams[tid] = {
@@ -172,10 +170,8 @@ function handleCreateClub(e) {
     };
   });
 
-  // Ensure initial user squad starts completely unassigned
   teams[userTeamId].squad.forEach(p => p.slot = 'RES');
 
-  // CPU squads auto-assign their initial lineups
   Object.values(teams).forEach(t => {
     if (!t.isUser) autoAssignLineup(t);
   });
@@ -228,7 +224,7 @@ function renderLayout() {
       </div>
       <!-- Tab Strip -->
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
-        ${['squad', 'tactics', 'fixtures', 'table', 'transfers'].map(tab => `
+        ${['squad', 'tactics', 'fixtures', 'table'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -264,7 +260,6 @@ function renderCurrentView() {
   else if (activeTab === 'tactics') renderTacticsView(ws);
   else if (activeTab === 'fixtures') renderFixturesView(ws);
   else if (activeTab === 'table') renderTableView(ws);
-  else if (activeTab === 'transfers') renderTransfersView(ws);
 }
 
 function getSlotRank(slot) {
@@ -273,7 +268,6 @@ function getSlotRank(slot) {
   return 999;
 }
 
-// Render sorted trait badges: [+] positive assets first, [-] negative liabilities second
 function renderTraitBadges(traits = []) {
   if (!traits.length) return '<span style="color: var(--text-muted);">-</span>';
   
@@ -292,7 +286,6 @@ function renderTraitBadges(traits = []) {
   }).join('');
 }
 
-// Extract clean glyph characters [IP, OOP, TR]
 function parseGlyphs(phaseGlyphs = "✓ / ✓ / ✓") {
   const parts = phaseGlyphs.split('/').map(s => s.trim());
   return {
@@ -302,7 +295,6 @@ function parseGlyphs(phaseGlyphs = "✓ / ✓ / ✓") {
   };
 }
 
-// Format individual glyph cells with distinct styling
 function renderGlyphCell(glyph) {
   let color = 'var(--text-muted)';
   if (glyph === '+') color = 'var(--green)';
@@ -310,7 +302,6 @@ function renderGlyphCell(glyph) {
   return `<span style="font-size: 15px; font-weight: 700; color: ${color};">${glyph}</span>`;
 }
 
-// Formats "Oliver Wilson" to "O. Wilson" for select labels
 function formatShortName(fullName) {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length > 1) {
@@ -329,7 +320,6 @@ function renderSquadView(container) {
   const benchSlots = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: `BN ${i + 1}` }));
   const playableSlots = [...starterSlots, ...benchSlots];
 
-  // Map slot assignments to occupant names
   const occupantMap = {};
   team.squad.forEach(sqP => {
     if (sqP.slot && sqP.slot !== 'RES') {
@@ -365,31 +355,16 @@ function renderSquadView(container) {
             <th onclick="sortSquad('ip')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort In Possession">IP</th>
             <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Out of Possession">OOP</th>
             <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Transitions">TR</th>
-            <th onclick="sortSquad('avgRating')" style="cursor: pointer; text-align: center;" title="Season Average Rating">Avg</th>
-            <th style="text-align: center;" title="Last 5 Matches Form">Form</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
             <th onclick="sortSquad('val')" style="cursor: pointer; text-align: right;">Valuation</th>
           </tr>
         </thead>
         <tbody>
           ${team.squad.map(p => {
-            const hist = p.ratingsHistory || [];
-            // True Season Average across all appearances
-            const avgRating = hist.length 
-              ? (hist.reduce((a, b) => a + b, 0) / hist.length).toFixed(1) 
-              : '-';
-
-            // Floating 5-Match Form Average
-            const last5 = hist.slice(-5);
-            const formAvg = last5.length 
-              ? (last5.reduce((a, b) => a + b, 0) / last5.length).toFixed(1) 
-              : '-';
-            
             const glyphs = parseGlyphs(p.phaseGlyphs);
             const heightStr = formatHeight(p.morphology.heightCm, units);
             const weightStr = formatWeight(p.morphology.weightKg, units);
 
-            // Construct swap options
             const optionsHtml = [
               `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
               ...playableSlots.map(s => {
@@ -421,8 +396,6 @@ function renderSquadView(container) {
                 <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
                 <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
                 <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
-                <td style="text-align: center; font-weight: 600; color: #fff;">${avgRating}</td>
-                <td style="text-align: center; color: var(--accent); font-weight: 600;">${formAvg}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
                 <td style="text-align: right; color: var(--green); font-weight: 600;">${formatMoney(p.val)}</td>
               </tr>
@@ -443,7 +416,7 @@ function handleSlotChange(pid, newSlot) {
   if (newSlot !== 'RES') {
     const occupant = team.squad.find(p => p.id !== pid && p.slot === newSlot);
     if (occupant) {
-      occupant.slot = oldSlot; // Direct atomic swap
+      occupant.slot = oldSlot;
     }
   }
   player.slot = newSlot;
@@ -475,20 +448,17 @@ function sortSquad(key) {
   };
 
   team.squad.sort((a, b) => {
-    // 1. Sort by Slot position
     if (squadSort.key === 'slot') {
       const rankA = getSlotRank(a.slot);
       const rankB = getSlotRank(b.slot);
       return squadSort.asc ? rankA - rankB : rankB - rankA;
     }
 
-    // 2. Sort by Last Name
     if (squadSort.key === 'name') {
       const cmp = getLastName(a.name).localeCompare(getLastName(b.name));
       return squadSort.asc ? cmp : -cmp;
     }
 
-    // 3. Sort by Phase Glyphs (IP / OOP / TR)
     if (['ip', 'oop', 'tr'].includes(squadSort.key)) {
       const gA = parseGlyphs(a.phaseGlyphs)[squadSort.key];
       const gB = parseGlyphs(b.phaseGlyphs)[squadSort.key];
@@ -507,11 +477,6 @@ function sortSquad(key) {
     }
     if (squadSort.key === 'weightKg') {
       return squadSort.asc ? a.morphology.weightKg - b.morphology.weightKg : b.morphology.weightKg - a.morphology.weightKg;
-    }
-    if (squadSort.key === 'avgRating') {
-      const avgA = a.ratingsHistory.length ? a.ratingsHistory.reduce((x, y) => x + y, 0) / a.ratingsHistory.length : 0;
-      const avgB = b.ratingsHistory.length ? b.ratingsHistory.reduce((x, y) => x + y, 0) / b.ratingsHistory.length : 0;
-      return squadSort.asc ? avgA - avgB : avgB - avgA;
     }
 
     let valA = a[squadSort.key];
@@ -636,14 +601,12 @@ function renderFixturesView(container) {
                 const teamXg = isHome ? match.hxg : match.axg;
                 const oppXg = isHome ? match.axg : match.hxg;
 
-                // Evenly spaced score with clean contrast
                 scoreDisplay = `
                   <span style="font-family: var(--font-mono, monospace); font-weight: 700; font-size: 13px; letter-spacing: 0.05em; color: #fff;">
                     ${teamGoals}&nbsp;–&nbsp;${oppGoals}
                   </span>
                 `;
 
-                // Symmetric, monospaced xG comparison
                 xgDisplay = `
                   <span style="font-family: var(--font-mono, monospace); font-size: 11px; color: var(--text-muted); letter-spacing: 0.02em;">
                     ${teamXg.toFixed(1)}&nbsp;–&nbsp;${oppXg.toFixed(1)}
@@ -684,7 +647,6 @@ function renderFixturesView(container) {
 
 // --- LEAGUE TABLE ---
 function renderTableView(container) {
-  // Tiebreaker sort: Points -> GD -> GF -> xGD -> Name
   const rows = [...state.tables[tableDiv]].sort((a, b) => 
     b.pts - a.pts || 
     b.gd - a.gd || 
@@ -744,94 +706,6 @@ function renderTableView(container) {
 function setTableDiv(d) {
   tableDiv = d;
   renderTableView(document.getElementById('view-workspace'));
-}
-
-// --- TRANSFERS VIEW ---
-function renderTransfersView(container) {
-  const units = (state.config && state.config.units) || 'metric';
-  const all = [];
-  Object.values(state.teams).forEach(t => {
-    if (t.id !== state.userTeamId) {
-      t.squad.forEach(p => all.push({ ...p, club: t.name, div: t.div, clubId: t.id }));
-    }
-  });
-
-  const targets = all.slice(0, 40);
-  const hUnit = units === 'imperial' ? 'FT' : 'CM';
-  const wUnit = units === 'imperial' ? 'LB' : 'KG';
-
-  container.innerHTML = `
-    <div class="panel" style="overflow-x: auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>Player</th>
-            <th>Archetype</th>
-            <th>Club</th>
-            <th style="text-align: center;">Div</th>
-            <th style="text-align: center;">Age</th>
-            <th style="text-align: center;">${hUnit}</th>
-            <th style="text-align: center;">${wUnit}</th>
-            <th>Traits</th>
-            <th style="text-align: center; width: 40px;" title="In Possession">IP</th>
-            <th style="text-align: center; width: 40px;" title="Out of Possession">OOP</th>
-            <th style="text-align: center; width: 40px;" title="Transitions">TR</th>
-            <th style="text-align: right;">Valuation</th>
-            <th style="text-align: center;">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${targets.map(p => {
-            const glyphs = parseGlyphs(p.phaseGlyphs);
-            const heightStr = formatHeight(p.morphology.heightCm, units);
-            const weightStr = formatWeight(p.morphology.weightKg, units);
-
-            return `
-              <tr>
-                <td style="font-weight: 600;">
-                  ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
-                </td>
-                <td style="color: var(--text);">${p.archetypeName}</td>
-                <td style="color: var(--text-muted);">${p.club}</td>
-                <td style="text-align: center;">${p.div}</td>
-                <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
-                <td style="text-align: center; font-size: 11px;">${heightStr}</td>
-                <td style="text-align: center; font-size: 11px;">${weightStr}</td>
-                <td>${renderTraitBadges(p.traits)}</td>
-                <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
-                <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
-                <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
-                <td style="text-align: right; color: var(--green); font-weight: 600;">${formatMoney(p.val)}</td>
-                <td style="text-align: center;">
-                  <button onclick="signTarget('${p.id}', '${p.clubId}')" class="primary" style="padding: 2px 8px;">SIGN</button>
-                </td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function signTarget(pid, cid) {
-  const userTeam = state.teams[state.userTeamId];
-  const seller = state.teams[cid];
-  const player = seller.squad.find(p => p.id === pid);
-
-  if (!player || userTeam.budget < player.val) {
-    alert("Insufficient transfer funds.");
-    return;
-  }
-
-  userTeam.budget -= player.val;
-  seller.budget += player.val;
-  seller.squad = seller.squad.filter(p => p.id !== pid);
-  player.slot = 'RES';
-  userTeam.squad.push(player);
-
-  saveGameState();
-  renderTransfersView(document.getElementById('view-workspace'));
 }
 
 window.addEventListener('DOMContentLoaded', boot);
