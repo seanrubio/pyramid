@@ -1,4 +1,4 @@
-// --- SIMULATION ENGINE (FOUNDATIONS RESTORED) ---
+// --- SIMULATION ENGINE (8-PILLAR ARCHITECTURE) ---
 
 const POS_GROUPS = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'ST'];
 const SECONDARY_MAP = {
@@ -19,8 +19,32 @@ const FORMATIONS = {
   '5-4-1': ['GK', 'LB', 'CB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST']
 };
 
+// Logical mapping of pitch positions to archetypes
+const POSITION_ARCHETYPES = {
+  'GK': ['gk_shot_stopper', 'gk_cross_collector', 'gk_possession_platform', 'gk_disrupter', 'gk_organizer'],
+  'CB': ['target', 'soldier', 'disrupter', 'anticipator', 'steady_eddy'],
+  'LB': ['two_way', 'runner_in_behind', 'soldier', 'steady_eddy'],
+  'RB': ['two_way', 'runner_in_behind', 'soldier', 'steady_eddy'],
+  'DM': ['disrupter', 'soldier', 'anticipator', 'two_way', 'steady_eddy'],
+  'CM': ['two_way', 'artist', 'pocket_player', 'anticipator', 'steady_eddy'],
+  'LM': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist', 'two_way'],
+  'RM': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist', 'two_way'],
+  'AM': ['pocket_player', 'artist', 'dribblinho', 'anticipator'],
+  'LW': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist'],
+  'RW': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist'],
+  'ST': ['target', 'runner_in_behind', 'dribblinho', 'soldier', 'pocket_player']
+};
+
+// Box-Muller Gaussian Random
+function randomGaussian(mean = 0, stdDev = 1) {
+  let u = 1 - Math.random();
+  let v = Math.random();
+  let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  return mean + z * stdDev;
+}
+
 function getCountry(code) {
-  return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', region: 'anglo' };
+  return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
 
 function generatePlayerName(region = 'anglo') {
@@ -30,27 +54,59 @@ function generatePlayerName(region = 'anglo') {
   return `${first} ${last}`;
 }
 
+// Player Generation using 8 Pillars, Morphology, and Trait Engine
 function generatePlayer(pos, div, natCode = null) {
   const countryObj = natCode ? getCountry(natCode) : DB.countries[Math.floor(Math.random() * DB.countries.length)];
-  const targetBase = Math.max(1, Math.min(10, Math.round(11 - (div * 0.9))));
-  const randAttr = () => Math.max(1, Math.min(10, targetBase + Math.floor(Math.random() * 3) - 1));
+  
+  // Select Archetype based on position
+  const candidateKeys = POSITION_ARCHETYPES[pos] || ['steady_eddy'];
+  const archetypeKey = candidateKeys[Math.floor(Math.random() * candidateKeys.length)];
+  const archetype = DB.archetypes[archetypeKey];
 
-  const technique = randAttr();
-  const decisionMaking = randAttr();
-  const bodyControl = randAttr();
-  const athleticism = randAttr();
-  const character = randAttr();
+  // Mathematical calibration (μ = 94 - div * 6.2)
+  const tierMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
+  const attributes = {};
+  const traits = [];
+  const thresholdDelta = 1.5 * DB.tierConfig.archetypeSigma;
 
-  const avgAttr = (technique + decisionMaking + bodyControl + athleticism + character) / 5;
+  // 8 Pillars generation & ±1.5σ Trait triggers
+  for (const [pillar, weight] of Object.entries(archetype.weights)) {
+    const rawVal = tierMean + (weight * DB.tierConfig.archetypeSigma) + randomGaussian(0, DB.tierConfig.noiseSigma);
+    const score = Math.max(1, Math.min(99, Math.round(rawVal)));
+    attributes[pillar] = score;
+
+    if (score >= tierMean + thresholdDelta) {
+      traits.push(`[+${DB.traits[pillar].asset}]`);
+    } else if (score <= tierMean - thresholdDelta) {
+      traits.push(`[-${DB.traits[pillar].liability}]`);
+    }
+  }
+
+  // Morphology (Height, BMI, Weight)
+  const baseMorph = archetype.isGK ? DB.morphologyBaselines.goalkeeper : DB.morphologyBaselines.outfield;
+  const heightCm = Math.round(randomGaussian(baseMorph.heightMean + archetype.morph.heightDelta, baseMorph.heightStd));
+  const bmi = +(randomGaussian(baseMorph.bmiMean + archetype.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
+  const weightKg = Math.round(bmi * Math.pow(heightCm / 100, 2));
+
+  // Evaluation Phase Glyphs (Hardware, Software, OS)
+  const getGlyph = (val) => (val >= tierMean + 4 ? "+" : val <= tierMean - 4 ? "-" : "✓");
+  const hardwareAvg = (attributes.proprioception + attributes.dynamicPower + attributes.bioenergetics) / 3;
+  const softwareAvg = (attributes.scanning + attributes.processing) / 2;
+  const osAvg = (attributes.regulation + attributes.grit + attributes.stewardship) / 3;
+  const profileGlyphs = `${getGlyph(hardwareAvg)} / ${getGlyph(softwareAvg)} / ${getGlyph(osAvg)}`;
+
+  // Secondary Positions
   const positions = [pos];
   if (pos !== 'GK' && Math.random() < 0.35 && SECONDARY_MAP[pos]) {
     const potential = SECONDARY_MAP[pos];
     positions.push(potential[Math.floor(Math.random() * potential.length)]);
   }
 
-  const tierMult = Math.pow(1.6, (11 - div));
-  const val = Math.round((Math.pow(avgAttr, 2.5) * 1200 * tierMult) / 5000) * 5000;
-  const wage = Math.max(350, Math.round((val * 0.0028) / 50) * 50);
+  // Market Valuation scaled to 1–99 attributes
+  const overallAvg = (hardwareAvg + softwareAvg + osAvg) / 3;
+  const tierMult = Math.pow(1.5, (11 - div));
+  const val = Math.round((Math.pow(overallAvg / 10, 2.5) * 1200 * tierMult) / 5000) * 5000;
+  const wage = Math.max(350, Math.round((val * 0.0025) / 50) * 50);
   const morales = ['Very Low', 'Low', 'OK', 'High', 'Very High'];
 
   return {
@@ -58,8 +114,13 @@ function generatePlayer(pos, div, natCode = null) {
     name: generatePlayerName(countryObj.region),
     nat: countryObj.code,
     positions,
+    archetypeKey,
+    archetypeName: archetype.name,
     age: 18 + Math.floor(Math.random() * 16),
-    technique, decisionMaking, bodyControl, athleticism, character,
+    morphology: { heightCm, weightKg, bmi },
+    attributes,
+    traits,
+    profileGlyphs,
     val, wage,
     contractYrs: 1 + Math.floor(Math.random() * 4),
     morale: morales[Math.floor(Math.random() * morales.length)],
@@ -81,6 +142,7 @@ function createFullSquad(div, primaryCountryCode) {
   return squad;
 }
 
+// Lineup sorting based on position fit and comprehensive 8-pillar rating
 function autoAssignLineup(team) {
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   team.squad.forEach(p => p.slot = 'RES');
@@ -89,9 +151,13 @@ function autoAssignLineup(team) {
   formRoles.forEach((role, idx) => {
     const slotKey = `S${idx + 1}`;
     available.sort((a, b) => {
-      const aFit = a.positions.includes(role) ? 10 : 0;
-      const bFit = b.positions.includes(role) ? 10 : 0;
-      return ((b.technique + b.decisionMaking + b.athleticism) + bFit) - ((a.technique + a.decisionMaking + a.athleticism) + aFit);
+      const aFit = a.positions.includes(role) ? 15 : 0;
+      const bFit = b.positions.includes(role) ? 15 : 0;
+      
+      const aScore = (a.attributes.proprioception + a.attributes.dynamicPower + a.attributes.scanning + a.attributes.processing) / 4 + aFit;
+      const bScore = (b.attributes.proprioception + b.attributes.dynamicPower + b.attributes.scanning + b.attributes.processing) / 4 + bFit;
+      
+      return bScore - aScore;
     });
     if (available.length > 0) available.shift().slot = slotKey;
   });
@@ -101,12 +167,10 @@ function autoAssignLineup(team) {
   }
 }
 
-// Validation Guard: Ensure valid 11 starters and a goalkeeper
 function validateLineup(team) {
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
   if (starters.length !== 11) return { valid: false, error: `Lineup incomplete: ${starters.length}/11 starters assigned.` };
 
-  // Check if at least one player on the pitch has GK proficiency
   const hasGk = starters.some(p => p.positions.includes('GK'));
   if (!hasGk) return { valid: false, error: 'No goalkeeper assigned in starting XI.' };
 
@@ -148,18 +212,15 @@ function buildRoundRobin(teamIds) {
   return rounds;
 }
 
-// Tactical Modifier Multipliers
 function getTacticalModifiers(tactics) {
   let attMod = 1.0;
   let defMod = 1.0;
 
-  // Mentality
   if (tactics.mentality === 'park the bus') { attMod *= 0.70; defMod *= 1.30; }
   else if (tactics.mentality === 'defensive') { attMod *= 0.85; defMod *= 1.15; }
   else if (tactics.mentality === 'attacking') { attMod *= 1.15; defMod *= 0.88; }
   else if (tactics.mentality === 'overload') { attMod *= 1.30; defMod *= 0.75; }
 
-  // Pressing
   if (tactics.press === 'high press' || tactics.press === 'gegenpress') { attMod *= 1.08; defMod *= 0.95; }
   else if (tactics.press === 'low block') { attMod *= 0.92; defMod *= 1.10; }
 
@@ -185,13 +246,23 @@ function runRoundSimulation() {
       const hStarters = homeTeam.squad.filter(p => p.slot.startsWith('S'));
       const aStarters = awayTeam.squad.filter(p => p.slot.startsWith('S'));
 
-      const getPower = (starters) => starters.length === 0 ? 20 : starters.reduce((acc, p) => acc + p.technique + p.decisionMaking + p.athleticism, 0) / starters.length;
+      // Calculate team strength across Hardware, Software, and OS
+      const getTeamPower = (starters) => {
+        if (starters.length === 0) return 40;
+        const total = starters.reduce((acc, p) => {
+          const hw = (p.attributes.proprioception + p.attributes.dynamicPower + p.attributes.bioenergetics) / 3;
+          const sw = (p.attributes.scanning + p.attributes.processing) / 2;
+          const os = (p.attributes.regulation + p.attributes.grit + p.attributes.stewardship) / 3;
+          return acc + (hw * 0.4 + sw * 0.4 + os * 0.2);
+        }, 0);
+        return total / starters.length;
+      };
 
       const hMods = getTacticalModifiers(homeTeam.tactics);
       const aMods = getTacticalModifiers(awayTeam.tactics);
 
-      const hPwr = (getPower(hStarters) * 1.06) * hMods.attMod * (1 / aMods.defMod);
-      const aPwr = getPower(aStarters) * aMods.attMod * (1 / hMods.defMod);
+      const hPwr = (getTeamPower(hStarters) * 1.06) * hMods.attMod * (1 / aMods.defMod);
+      const aPwr = getTeamPower(aStarters) * aMods.attMod * (1 / hMods.defMod);
       const hRatio = hPwr / (hPwr + aPwr);
 
       const hxg = Math.max(0.2, (hRatio * 2.8) + (Math.random() * 0.8 - 0.4));
@@ -253,7 +324,6 @@ function applyPlayerMinutesAndRatings(team, gf, ga) {
     if (p.ratingsHistory.length > 5) p.ratingsHistory.shift();
   });
 
-  // Pick logical subs
   const numSubs = Math.min(bench.length, 3 + Math.floor(Math.random() * 3));
   for (let i = 0; i < numSubs; i++) {
     const sub = bench[i];
