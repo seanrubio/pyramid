@@ -106,7 +106,7 @@ function generatePlayer(isGK, div, natCode = null) {
     (attributes.stewardship    * 0.075);
 
  // Glyphs trigger symmetrically around the true tier mean (±1.4 points)
-  const getGlyph = (val) => (val >= tierMean + 1.4 ? "+" : val <= tierMean - 1.4 ? "-" : "✓");
+  const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 0.7 ? "-" : "✓");
   const phaseGlyphs = `${getGlyph(ipScore)} / ${getGlyph(oopScore)} / ${getGlyph(trScore)}`;
 
   // Market Valuation
