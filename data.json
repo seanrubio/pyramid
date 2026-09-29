@@ -378,96 +378,215 @@
     "outfield": { "heightMean": 182, "heightStd": 6, "bmiMean": 23.0, "bmiStd": 0.8 },
     "goalkeeper": { "heightMean": 190, "heightStd": 4, "bmiMean": 23.5, "bmiStd": 0.8 }
   },
-  "archetypes": {
+ "archetypes": {
     "runner_in_behind": {
-      "name": "Runner In Behind",
-      "isGK": false,
-      "weights": { "proprioception": 0.25, "dynamicPower": 1.75, "bioenergetics": 0.50, "scanning": 0.25, "processing": 0.75, "regulation": 0.25, "grit": -0.50, "stewardship": 0.00 },
-      "morph": { "heightDelta": -2, "bmiDelta": -0.4 }
+      "name": "Runner in Behind",
+      "morph": { "heightDelta": -2, "bmiDelta": -0.8 },
+      "weights": {
+        "proprioception": 0.50,
+        "dynamicPower": 1.75,
+        "bioenergetics": 0.75,
+        "scanning": -1.25,
+        "processing": -0.25,
+        "regulation": 0.00,
+        "grit": -0.25,
+        "stewardship": -1.25
+      }
     },
     "pocket_player": {
       "name": "Pocket Player",
-      "isGK": false,
-      "weights": { "proprioception": 1.25, "dynamicPower": -0.25, "bioenergetics": -0.25, "scanning": 1.50, "processing": 1.25, "regulation": 0.50, "grit": -0.75, "stewardship": 0.25 },
-      "morph": { "heightDelta": -4, "bmiDelta": -0.3 }
+      "morph": { "heightDelta": -4, "bmiDelta": -1.0 },
+      "weights": {
+        "proprioception": 0.75,
+        "dynamicPower": -1.25,
+        "bioenergetics": -0.75,
+        "scanning": 1.75,
+        "processing": 1.50,
+        "regulation": 0.25,
+        "grit": -1.25,
+        "stewardship": -1.00
+      }
     },
     "target": {
       "name": "Target",
-      "isGK": false,
-      "weights": { "proprioception": 0.75, "dynamicPower": 1.50, "bioenergetics": -0.75, "scanning": -0.50, "processing": 0.00, "regulation": 0.25, "grit": 1.50, "stewardship": 0.25 },
-      "morph": { "heightDelta": 8, "bmiDelta": 1.2 }
+      "morph": { "heightDelta": 8, "bmiDelta": 1.8 },
+      "weights": {
+        "proprioception": -1.25,
+        "dynamicPower": 1.75,
+        "bioenergetics": -1.25,
+        "scanning": -0.50,
+        "processing": -0.25,
+        "regulation": 0.25,
+        "grit": 1.50,
+        "stewardship": -0.25
+      }
     },
     "dribblinho": {
       "name": "Dribblinho",
-      "isGK": false,
-      "weights": { "proprioception": 1.75, "dynamicPower": 1.25, "bioenergetics": -0.50, "scanning": -0.25, "processing": 0.50, "regulation": -0.25, "grit": -1.00, "stewardship": -0.75 },
-      "morph": { "heightDelta": -6, "bmiDelta": -0.5 }
+      "morph": { "heightDelta": -5, "bmiDelta": -1.2 },
+      "weights": {
+        "proprioception": 1.75,
+        "dynamicPower": 1.25,
+        "bioenergetics": 0.00,
+        "scanning": -0.75,
+        "processing": 0.25,
+        "regulation": -0.25,
+        "grit": -1.00,
+        "stewardship": -1.25
+      }
     },
     "artist": {
       "name": "Artist",
-      "isGK": false,
-      "weights": { "proprioception": 1.50, "dynamicPower": -1.25, "bioenergetics": -0.75, "scanning": 1.75, "processing": 1.50, "regulation": 0.75, "grit": -1.25, "stewardship": -0.50 },
-      "morph": { "heightDelta": -1, "bmiDelta": -0.5 }
+      "morph": { "heightDelta": -1, "bmiDelta": -0.5 },
+      "weights": {
+        "proprioception": 1.50,
+        "dynamicPower": -1.25,
+        "bioenergetics": -0.75,
+        "scanning": 1.75,
+        "processing": 0.75,
+        "regulation": 0.25,
+        "grit": -1.25,
+        "stewardship": -1.00
+      }
     },
     "anticipator": {
       "name": "Anticipator",
-      "isGK": false,
-      "weights": { "proprioception": 0.75, "dynamicPower": -0.50, "bioenergetics": 0.25, "scanning": 1.75, "processing": 1.75, "regulation": 1.25, "grit": 0.00, "stewardship": 0.50 },
-      "morph": { "heightDelta": -1, "bmiDelta": -0.2 }
+      "morph": { "heightDelta": 1, "bmiDelta": -0.2 },
+      "weights": {
+        "proprioception": 0.25,
+        "dynamicPower": -1.25,
+        "bioenergetics": -0.75,
+        "scanning": 1.75,
+        "processing": 1.75,
+        "regulation": 0.25,
+        "grit": -0.75,
+        "stewardship": -1.25
+      }
     },
     "disrupter": {
       "name": "Disrupter",
-      "isGK": false,
-      "weights": { "proprioception": -0.50, "dynamicPower": 1.50, "bioenergetics": 0.75, "scanning": 0.25, "processing": 0.75, "regulation": -1.25, "grit": 1.75, "stewardship": -0.50 },
-      "morph": { "heightDelta": 0, "bmiDelta": 1.0 }
+      "morph": { "heightDelta": 2, "bmiDelta": 0.8 },
+      "weights": {
+        "proprioception": -0.75,
+        "dynamicPower": 1.50,
+        "bioenergetics": 0.25,
+        "scanning": -0.50,
+        "processing": -0.50,
+        "regulation": -1.25,
+        "grit": 1.75,
+        "stewardship": -0.50
+      }
     },
     "soldier": {
       "name": "Soldier",
-      "isGK": false,
-      "weights": { "proprioception": -0.25, "dynamicPower": 0.50, "bioenergetics": 0.75, "scanning": 0.00, "processing": 0.00, "regulation": 0.75, "grit": 1.25, "stewardship": 1.75 },
-      "morph": { "heightDelta": 2, "bmiDelta": 0.6 }
+      "morph": { "heightDelta": 0, "bmiDelta": 0.4 },
+      "weights": {
+        "proprioception": -1.25,
+        "dynamicPower": 0.25,
+        "bioenergetics": 0.75,
+        "scanning": -0.75,
+        "processing": -1.25,
+        "regulation": 0.25,
+        "grit": 1.50,
+        "stewardship": 0.50
+      }
     },
     "two_way": {
-      "name": "Two-Way",
-      "isGK": false,
-      "weights": { "proprioception": 0.00, "dynamicPower": 0.50, "bioenergetics": 1.75, "scanning": 0.25, "processing": 0.25, "regulation": 0.50, "grit": 0.75, "stewardship": 1.00 },
-      "morph": { "heightDelta": 0, "bmiDelta": -0.4 }
+      "name": "Two-Way Engine",
+      "morph": { "heightDelta": 0, "bmiDelta": -0.2 },
+      "weights": {
+        "proprioception": -0.75,
+        "dynamicPower": 0.25,
+        "bioenergetics": 1.75,
+        "scanning": -0.25,
+        "processing": -1.00,
+        "regulation": 0.00,
+        "grit": 0.75,
+        "stewardship": -0.75
+      }
     },
     "steady_eddy": {
       "name": "Steady Eddy",
-      "isGK": false,
-      "weights": { "proprioception": 0.10, "dynamicPower": 0.00, "bioenergetics": 0.10, "scanning": 0.00, "processing": 0.10, "regulation": 0.10, "grit": 0.10, "stewardship": 0.25 },
-      "morph": { "heightDelta": 0, "bmiDelta": 0.0 }
+      "morph": { "heightDelta": 0, "bmiDelta": 0.0 },
+      "weights": {
+        "proprioception": 0.00,
+        "dynamicPower": 0.00,
+        "bioenergetics": 0.00,
+        "scanning": 0.00,
+        "processing": 0.00,
+        "regulation": 0.00,
+        "grit": 0.00,
+        "stewardship": 0.00
+      }
     },
     "gk_shot_stopper": {
       "name": "Shot Stopper",
-      "isGK": true,
-      "weights": { "proprioception": 1.50, "dynamicPower": 1.75, "bioenergetics": -0.50, "scanning": -0.25, "processing": 1.25, "regulation": 0.50, "grit": 0.25, "stewardship": 0.00 },
-      "morph": { "heightDelta": 0, "bmiDelta": 0.0 }
+      "morph": { "heightDelta": 1, "bmiDelta": 0.2 },
+      "weights": {
+        "proprioception": 0.50,
+        "dynamicPower": 1.75,
+        "bioenergetics": -0.75,
+        "scanning": -0.75,
+        "processing": 1.00,
+        "regulation": 0.25,
+        "grit": 0.25,
+        "stewardship": -1.25
+      }
     },
     "gk_cross_collector": {
       "name": "Cross Collector",
-      "isGK": true,
-      "weights": { "proprioception": 0.50, "dynamicPower": 1.50, "bioenergetics": 0.00, "scanning": 1.25, "processing": 0.50, "regulation": 0.50, "grit": 1.50, "stewardship": 0.50 },
-      "morph": { "heightDelta": 4, "bmiDelta": 0.4 }
+      "morph": { "heightDelta": 5, "bmiDelta": 0.8 },
+      "weights": {
+        "proprioception": -0.75,
+        "dynamicPower": 1.75,
+        "bioenergetics": -0.75,
+        "scanning": 0.25,
+        "processing": 0.00,
+        "regulation": 0.25,
+        "grit": 1.50,
+        "stewardship": -1.25
+      }
     },
     "gk_possession_platform": {
       "name": "Possession Platform",
-      "isGK": true,
-      "weights": { "proprioception": 1.75, "dynamicPower": -0.50, "bioenergetics": 0.25, "scanning": 1.75, "processing": 1.50, "regulation": 0.75, "grit": -0.75, "stewardship": 0.25 },
-      "morph": { "heightDelta": -1, "bmiDelta": -0.4 }
+      "morph": { "heightDelta": 0, "bmiDelta": -0.4 },
+      "weights": {
+        "proprioception": 1.50,
+        "dynamicPower": -1.25,
+        "bioenergetics": -0.75,
+        "scanning": 1.75,
+        "processing": 1.25,
+        "regulation": 0.50,
+        "grit": -1.25,
+        "stewardship": -0.75
+      }
     },
     "gk_disrupter": {
-      "name": "Disrupter (GK)",
-      "isGK": true,
-      "weights": { "proprioception": 0.50, "dynamicPower": 1.25, "bioenergetics": -0.25, "scanning": 0.25, "processing": 0.75, "regulation": -1.25, "grit": 1.75, "stewardship": -1.00 },
-      "morph": { "heightDelta": 2, "bmiDelta": 0.8 }
+      "name": "Sweeper Disrupter",
+      "morph": { "heightDelta": -1, "bmiDelta": 0.0 },
+      "weights": {
+        "proprioception": 0.25,
+        "dynamicPower": 1.50,
+        "bioenergetics": 0.50,
+        "scanning": 0.75,
+        "processing": 0.75,
+        "regulation": -1.25,
+        "grit": 0.75,
+        "stewardship": -1.25
+      }
     },
     "gk_organizer": {
       "name": "Organizer",
-      "isGK": true,
-      "weights": { "proprioception": 0.00, "dynamicPower": -0.50, "bioenergetics": 0.25, "scanning": 1.75, "processing": 1.50, "regulation": 1.25, "grit": 0.75, "stewardship": 1.50 },
-      "morph": { "heightDelta": 1, "bmiDelta": 0.3 }
+      "morph": { "heightDelta": 2, "bmiDelta": 0.4 },
+      "weights": {
+        "proprioception": -0.75,
+        "dynamicPower": -1.25,
+        "bioenergetics": -0.50,
+        "scanning": 1.75,
+        "processing": 1.25,
+        "regulation": 0.75,
+        "grit": 0.50,
+        "stewardship": -0.75
+      }
     }
-  }  
-}
+  }
