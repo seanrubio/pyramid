@@ -267,15 +267,23 @@ function runRoundSimulation() {
       const hStarters = homeTeam.squad.filter(p => p.slot.startsWith('S'));
       const aStarters = awayTeam.squad.filter(p => p.slot.startsWith('S'));
 
-      const getPhasePower = (starters) => {
+      const getPhasePower = (starters, blueprintKey) => {
         if (starters.length === 0) return 40;
+        
+        // Fallback to balanced if not found
+        const bp = (DB.tacticalBlueprints && DB.tacticalBlueprints[blueprintKey]) 
+          ? DB.tacticalBlueprints[blueprintKey].phaseWeights 
+          : { ip: 0.38, oop: 0.38, tr: 0.24 };
+
         const total = starters.reduce((acc, p) => {
           const a = p.attributes;
           const ip = (a.proprioception * 0.20) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.075) + (a.scanning * 0.20) + (a.processing * 0.15) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
           const oop = (a.proprioception * 0.075) + (a.dynamicPower * 0.20) + (a.bioenergetics * 0.15) + (a.scanning * 0.15) + (a.processing * 0.075) + (a.regulation * 0.075) + (a.grit * 0.15) + (a.stewardship * 0.125);
           const tr = (a.proprioception * 0.15) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.20) + (a.scanning * 0.075) + (a.processing * 0.20) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
-          return acc + (ip * 0.38 + oop * 0.38 + tr * 0.24);
+          
+          return acc + (ip * bp.ip + oop * bp.oop + tr * bp.tr);
         }, 0);
+
         return total / starters.length;
       };
 
