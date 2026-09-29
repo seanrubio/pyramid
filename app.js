@@ -376,15 +376,6 @@ function renderSquadView(container) {
                   </select>
                 </td>
                 <td style="font-weight: 600; color: var(--text);">
-
-            return `
-              <tr>
-                <td>
-                  <select onchange="handleSlotChange('${p.id}', this.value)" style="width: 100%;">
-                    ${optionsHtml}
-                  </select>
-                </td>
-                <td style="font-weight: 600; color: var(--text);">
                   ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
                 </td>
                 <td style="color: var(--text);">${p.archetypeName}</td>
@@ -437,11 +428,16 @@ function sortSquad(key) {
     squadSort.asc = !squadSort.asc;
   } else {
     squadSort.key = key;
-    squadSort.asc = (key === 'name' || key === 'slot'); // Alphabetical / slots default ascending, stats default descending
+    squadSort.asc = (key === 'name' || key === 'slot');
   }
 
   const team = state.teams[state.userTeamId];
   const GLYPH_WEIGHTS = { '+': 2, '✓': 1, '-': 0 };
+
+  const getLastName = (fullName) => {
+    const parts = fullName.trim().split(/\s+/);
+    return parts[parts.length - 1].toLowerCase();
+  };
 
   team.squad.sort((a, b) => {
     // 1. Sort by Slot position
@@ -453,10 +449,6 @@ function sortSquad(key) {
 
     // 2. Sort by Last Name
     if (squadSort.key === 'name') {
-      const getLastName = (fullName) => {
-        const parts = fullName.trim().split(/\s+/);
-        return parts[parts.length - 1].toLowerCase();
-      };
       const cmp = getLastName(a.name).localeCompare(getLastName(b.name));
       return squadSort.asc ? cmp : -cmp;
     }
@@ -471,11 +463,8 @@ function sortSquad(key) {
       if (valA !== valB) {
         return squadSort.asc ? valA - valB : valB - valA;
       }
-      // Tie-breaker: player overall value
-      const getLastName = (fullName) => {
-        const parts = fullName.trim().split(/\s+/);
-        return parts[parts.length - 1].toLowerCase();
-      };
+      
+      // Tie-breaker: Qualitative alphabetical by last name
       return getLastName(a.name).localeCompare(getLastName(b.name));
     }
 
