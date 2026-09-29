@@ -16,8 +16,8 @@ const CURRENCY_SYMBOLS = {
 };
 
 function formatMoney(amount) {
-  const cfg = (state && state.config) ? state.config : { currency: 'GBP' };
-  const sym = CURRENCY_SYMBOLS[cfg.currency] || '£';
+  const cfg = (state && state.config) ? state.config : { currency: 'USD' };
+  const sym = CURRENCY_SYMBOLS[cfg.currency] || '$';
 
   if (amount >= 10000000) return `${sym}${Math.round(amount / 1000000)}M`;
   if (amount >= 1000000) return `${sym}${(amount / 1000000).toFixed(1)}M`;
@@ -52,12 +52,12 @@ async function boot() {
     const saved = localStorage.getItem('apex_wpm_save_v1');
     if (saved) {
       state = JSON.parse(saved);
-      if (!state.config) state.config = { currency: 'GBP', wageCadence: 'weekly', units: 'metric' };
-      if (!state.config.units) state.config.units = 'metric';
+      if (!state.config) state.config = { currency: 'USD', wageCadence: 'yearly', units: 'imperial' };
+      if (!state.config.units) state.config.units = 'imperial';
       tableDiv = state.teams[state.userTeamId].div;
       renderLayout();
     } else {
-      renderClubCreator();
+      initializeDefaultCareer();
     }
   } catch (err) {
     document.getElementById('app-root').innerHTML = `
@@ -73,89 +73,54 @@ function saveGameState() {
 }
 
 function resetGameDatabase() {
-  if (confirm("Reset current career save and restart from registration?")) {
+  if (confirm("Reset current career save and restart with defaults?")) {
     localStorage.removeItem('apex_wpm_save_v1');
     location.reload();
   }
 }
 
-function renderClubCreator() {
-  document.getElementById('app-root').innerHTML = `
-    <div style="max-width: 480px; margin: 50px auto;" class="panel">
-      <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700;">
-        NEW CLUB REGISTRATION (DIVISION 10)
-      </div>
-      <form onsubmit="handleCreateClub(event)" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
-        <div>
-          <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">City / Club Name:</label>
-          <input id="create-name" required placeholder="e.g. Halifax" style="width: 100%;">
-        </div>
-        <div>
-          <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Country Heritage (Name Seed):</label>
-          <select id="create-country" style="width: 100%;">
-            ${DB.countries.map(c => `<option value="${c.code}">${c.flag}${c.name}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Stadium Ground Name:</label>
-          <input id="create-ground" placeholder="e.g. Waterfront Park" style="width: 100%;">
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-          <div>
-            <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Currency:</label>
-            <select id="create-currency" style="width: 100%;">
-              <option value="GBP">GBP (£)</option>
-              <option value="EUR">EUR (€)</option>
-              <option value="USD">USD ($)</option>
-            </select>
-          </div>
-          <div>
-            <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Wage Cadence:</label>
-            <select id="create-wage-cadence" style="width: 100%;">
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-            </select>
-          </div>
-          <div>
-            <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Units:</label>
-            <select id="create-units" style="width: 100%;">
-              <option value="metric">Metric (CM/KG)</option>
-              <option value="imperial">Imperial (FT/LB)</option>
-            </select>
-          </div>
-        </div>
-        <button type="submit" class="primary" style="margin-top: 8px; padding: 8px;">CREATE CLUB & ENTER PYRAMID</button>
-      </form>
-    </div>
-  `;
-}
+function initializeDefaultCareer() {
+  const name = 'Oakland';
+  const country = 'US';
+  const stadium = 'Oakland Coliseum';
+  const currency = 'USD';
+  const wageCadence = 'yearly';
+  const units = 'imperial';
 
-function handleCreateClub(e) {
-  e.preventDefault();
-  const name = document.getElementById('create-name').value.trim();
-  const country = document.getElementById('create-country').value;
-  const stadium = document.getElementById('create-ground').value.trim() || `${name} Stadium`;
-  const currency = document.getElementById('create-currency').value;
-  const wageCadence = document.getElementById('create-wage-cadence').value;
-  const units = document.getElementById('create-units').value;
-
-  const userTeamId = 'club_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const userTeamId = 'club_oakland';
   const teams = {};
 
   teams[userTeamId] = {
-    id: userTeamId, name, country, div: 10, stadium,
-    rep: 15, budget: 450000, wageBudget: 18000,
+    id: userTeamId,
+    name,
+    country,
+    div: 10,
+    stadium,
+    rep: 15,
+    budget: 450000,
+    wageBudget: 18000,
     formation: '4-4-2 Flat',
-    tactics: { mentality: 'balanced', press: 'mid block', buildGk: 'mixed', buildMid: 'mixed', chanceCreation: 'mixed' },
-    isUser: true, squad: createFullSquad(10, country)
+    tactics: {
+      mentality: 'balanced',
+      press: 'mid block',
+      buildGk: 'mixed',
+      buildMid: 'mixed',
+      chanceCreation: 'mixed'
+    },
+    isUser: true,
+    squad: createFullSquad(10, country)
   };
 
   DB.cities.forEach(city => {
     const tid = 'club_' + city.id;
     teams[tid] = {
-      id: tid, name: city.name, country: city.country, div: city.div, stadium: city.stadium,
-      rep: city.rep, budget: Math.round(Math.pow(1.5, 11 - city.div) * 200000),
+      id: tid,
+      name: city.name,
+      country: city.country,
+      div: city.div,
+      stadium: city.stadium,
+      rep: city.rep,
+      budget: Math.round(Math.pow(1.5, 11 - city.div) * 200000),
       wageBudget: Math.round(Math.pow(1.5, 11 - city.div) * 12000),
       formation: '4-4-2 Flat',
       tactics: { 
@@ -166,7 +131,8 @@ function handleCreateClub(e) {
         buildMid: 'mixed', 
         chanceCreation: 'mixed' 
       },
-      isUser: false, squad: createFullSquad(city.div, city.country)
+      isUser: false,
+      squad: createFullSquad(city.div, city.country)
     };
   });
 
@@ -179,18 +145,33 @@ function handleCreateClub(e) {
   const tables = {};
   for (let d = 1; d <= 10; d++) {
     tables[d] = Object.values(teams).filter(t => t.div === d).map(t => ({
-      teamId: t.id, name: t.name,
-      p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0,
-      xg: 0.0, xga: 0.0, xgd: 0.0, form: []
+      teamId: t.id,
+      name: t.name,
+      p: 0,
+      w: 0,
+      d: 0,
+      l: 0,
+      gf: 0,
+      ga: 0,
+      gd: 0,
+      pts: 0,
+      xg: 0.0,
+      xga: 0.0,
+      xgd: 0.0,
+      form: []
     }));
   }
 
   tableDiv = 10;
 
   state = {
-    season: 1, round: 1, maxRounds: 38,
+    season: 1,
+    round: 1,
+    maxRounds: 38,
     config: { currency, wageCadence, units },
-    userTeamId, teams, tables,
+    userTeamId,
+    teams,
+    tables,
     fixtures: generateFixtures(teams)
   };
 
@@ -504,7 +485,9 @@ function renderTacticsView(container) {
       ${[
         { label: 'Mentality (Affects Goals & Defense):', key: 'mentality', opts: ['park the bus', 'defensive', 'balanced', 'attacking', 'overload'] },
         { label: 'Pressing Strategy:', key: 'press', opts: ['low block', 'mid block', 'high press', 'gegenpress'] },
-        { label: 'Build Up Distribution:', key: 'buildGk', opts: ['short', 'mixed', 'long'] }
+        { label: 'Goalkeeper Distribution:', key: 'buildGk', opts: ['short', 'mixed', 'long'] },
+        { label: 'Midfield Build-up:', key: 'buildMid', opts: ['short', 'mixed', 'direct'] },
+        { label: 'Chance Creation:', key: 'chanceCreation', opts: ['work into box', 'mixed', 'cross heavy', 'shoot on sight'] }
       ].map(sec => `
         <div>
           <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">${sec.label}</label>
