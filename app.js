@@ -355,18 +355,15 @@ function renderSquadView(container) {
             const weightStr = formatWeight(p.morphology.weightKg, units);
 
             // Construct swap options
+            const isRes = (p.slot === 'RES');
             const optionsHtml = [
-              `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES (Reserves)</option>`,
+              `<option value="RES" ${isRes ? 'selected' : ''}>${isRes ? 'RES' : 'RES (Reserves)'}</option>`,
               ...playableSlots.map(s => {
                 const isCurrent = (p.slot === s.val);
                 const occupant = occupantMap[s.val];
                 let text = s.label;
-                if (isCurrent) {
-                  text += ` (Current)`;
-                } else if (occupant) {
-                  text += ` (${formatShortName(occupant.name)})`;
-                } else {
-                  text += ` (Empty)`;
+                if (!isCurrent) {
+                  text += occupant ? ` (${formatShortName(occupant.name)})` : ` (Empty)`;
                 }
                 return `<option value="${s.val}" ${isCurrent ? 'selected' : ''}>${text}</option>`;
               })
