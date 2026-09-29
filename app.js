@@ -122,7 +122,6 @@ function handleCreateClub(e) {
 
 function renderLayout() {
   const userTeam = state.teams[state.userTeamId];
-  const startersCount = userTeam.squad.filter(p => p.slot.startsWith('S')).length;
 
   document.getElementById('app-root').innerHTML = `
     <!-- Top Global Bar -->
@@ -176,9 +175,11 @@ function renderCurrentView() {
 function renderSquadView(container) {
   const team = state.teams[state.userTeamId];
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
-  const starterOpts = formRoles.map((role, i) => ({ val: `S${i + 1}`, label: `XI: ${role}` }));
-  const benchOpts = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: `Bench ${i + 1}` }));
-  const allOpts = [{ val: 'RES', label: 'Reserves' }, ...starterOpts, ...benchOpts];
+  
+  // Cleaned Slot Labels: Exact Position Name, "BN", and "RES"
+  const starterOpts = formRoles.map((role, i) => ({ val: `S${i + 1}`, label: role }));
+  const benchOpts = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: 'BN' }));
+  const allOpts = [{ val: 'RES', label: 'RES' }, ...starterOpts, ...benchOpts];
 
   const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
 
@@ -211,17 +212,15 @@ function renderSquadView(container) {
         </thead>
         <tbody>
           ${team.squad.map(p => {
-            const isStarter = p.slot.startsWith('S');
-            const isBench = p.slot.startsWith('B');
             const form = p.ratingsHistory.length ? (p.ratingsHistory.reduce((a, b) => a + b, 0) / p.ratingsHistory.length).toFixed(1) : '-';
             return `
-              <tr style="background: ${isStarter ? 'rgba(63, 185, 80, 0.05)' : isBench ? 'rgba(210, 153, 34, 0.05)' : 'transparent'}">
+              <tr>
                 <td>
                   <select onchange="handleSlotChange('${p.id}', this.value)">
                     ${allOpts.map(o => `<option value="${o.val}" ${p.slot === o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
                   </select>
                 </td>
-                <td style="font-weight: 600; color: ${isStarter ? '#fff' : isBench ? 'var(--amber)' : 'var(--text-muted)'}">${p.name}</td>
+                <td style="font-weight: 600; color: var(--text);">${p.name}</td>
                 <td style="color: var(--accent);">${p.positions.join('/')}</td>
                 <td style="text-align: center;">${p.technique}</td>
                 <td style="text-align: center;">${p.decisionMaking}</td>
