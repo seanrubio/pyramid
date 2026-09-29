@@ -373,8 +373,16 @@ function renderSquadView(container) {
         <tbody>
           ${team.squad.map(p => {
             const hist = p.ratingsHistory || [];
-            const avgRating = hist.length ? (hist.reduce((a, b) => a + b, 0) / hist.length).toFixed(1) : '-';
-            const form = hist.length ? hist.slice(-5).map(r => r.toFixed(1)).join(' ') : '-';
+            // True Season Average across all appearances
+            const avgRating = hist.length 
+              ? (hist.reduce((a, b) => a + b, 0) / hist.length).toFixed(1) 
+              : '-';
+
+            // Floating 5-Match Form Average
+            const last5 = hist.slice(-5);
+            const formAvg = last5.length 
+              ? (last5.reduce((a, b) => a + b, 0) / last5.length).toFixed(1) 
+              : '-';
             
             const glyphs = parseGlyphs(p.phaseGlyphs);
             const heightStr = formatHeight(p.morphology.heightCm, units);
@@ -413,7 +421,7 @@ function renderSquadView(container) {
                 <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
                 <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
                 <td style="text-align: center; font-weight: 600; color: #fff;">${avgRating}</td>
-                <td style="text-align: center; color: var(--accent); font-size: 10px;">${form}</td>
+                <td style="text-align: center; color: var(--accent); font-weight: 600;">${formAvg}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
                 <td style="text-align: right; color: var(--green); font-weight: 600;">${formatMoney(p.val)}</td>
               </tr>
