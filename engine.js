@@ -196,42 +196,76 @@ function getPlayerPhaseScores(p) {
   return { ip, oop, tr };
 }
 
-// Evaluate slot suitability based on position zone, blueprint affinities, and morphology
+// Evaluate slot suitability based on position zone, blueprint affinities, morphology, and archetype compatibility
 function evaluateSlotFit(player, role, blueprintKey) {
   const scores = getPlayerPhaseScores(player);
   const a = player.attributes;
+  const arch = player.archetypeKey;
   const bp = (blueprintKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[blueprintKey] : null;
 
   let baseFit = 0;
 
-  // 1. Positional Role Phase & Attribute Demands
+  // 1. Role-specific phase baseline & archetype restrictions
   if (role === 'CB') {
-    baseFit = (scores.oop * 0.65) + (scores.tr * 0.20) + (scores.ip * 0.15);
-    if (player.morphology.heightCm >= 188) baseFit += 4.0;
-    else if (player.morphology.heightCm < 182) baseFit -= 4.0;
+    // CBs need Out of Possession & aerial presence
+    baseFit = (scores.oop * 0.70) + (scores.tr * 0.15) + (scores.ip * 0.15);
+
+    // Natural fits
+    if (['soldier', 'disrupter', 'anticipator', 'steady_eddy'].includes(arch)) baseFit += 8.0;
+    
+    // Strict bans on non-defenders
+    if (['dribblinho', 'artist', 'pocket_player', 'runner_in_behind'].includes(arch)) baseFit -= 20.0;
+
+    // Height checks only valid for players suited to defend
+    if (player.morphology.heightCm >= 188) baseFit += 3.0;
+    else if (player.morphology.heightCm < 180) baseFit -= 8.0;
+
   } else if (role === 'LB' || role === 'RB') {
-    baseFit = (scores.tr * 0.45) + (scores.oop * 0.35) + (scores.ip * 0.20);
-    baseFit += (a.bioenergetics * 0.05);
+    // Fullbacks need Transition & Bioenergetics
+    baseFit = (scores.tr * 0.50) + (scores.oop * 0.35) + (scores.ip * 0.15);
+
+    // Natural fits
+    if (['two_way', 'runner_in_behind', 'soldier', 'steady_eddy'].includes(arch)) baseFit += 6.0;
+
+    // Creative central/interior archetypes struggle on the flank
+    if (['pocket_player', 'target', 'artist'].includes(arch)) baseFit -= 12.0;
+
   } else if (role === 'DM') {
+    // Defensive mid
     baseFit = (scores.oop * 0.50) + (scores.tr * 0.30) + (scores.ip * 0.20);
-    baseFit += (a.grit * 0.05) + (a.stewardship * 0.05);
+    if (['disrupter', 'soldier', 'two_way', 'anticipator'].includes(arch)) baseFit += 8.0;
+    if (['dribblinho', 'runner_in_behind', 'target'].includes(arch)) baseFit -= 15.0;
+
   } else if (role === 'CM') {
+    // Central mid: versatile link
     baseFit = (scores.ip * 0.35) + (scores.tr * 0.35) + (scores.oop * 0.30);
+    if (['two_way', 'pocket_player', 'anticipator', 'steady_eddy', 'artist'].includes(arch)) baseFit += 6.0;
+    if (['target'].includes(arch)) baseFit -= 15.0;
+
   } else if (role === 'AM') {
+    // Attacking mid
     baseFit = (scores.ip * 0.60) + (scores.tr * 0.25) + (scores.oop * 0.15);
-    baseFit += (a.scanning * 0.05) + (a.processing * 0.05);
-  } else if (role === 'LM' || role === 'RM' || role === 'LW' || role === 'RW') {
+    if (['pocket_player', 'artist', 'dribblinho'].includes(arch)) baseFit += 8.0;
+    if (['soldier', 'disrupter'].includes(arch)) baseFit -= 12.0;
+
+  } else if (['LM', 'RM', 'LW', 'RW'].includes(role)) {
+    // Wide attackers / wingers
     baseFit = (scores.tr * 0.45) + (scores.ip * 0.40) + (scores.oop * 0.15);
-    baseFit += (a.proprioception * 0.05) + (a.dynamicPower * 0.05);
+    if (['dribblinho', 'runner_in_behind', 'two_way', 'artist'].includes(arch)) baseFit += 7.0;
+    if (['soldier', 'target', 'pocket_player'].includes(arch)) baseFit -= 10.0;
+
   } else if (role === 'ST') {
+    // Strikers
     baseFit = (scores.ip * 0.50) + (scores.tr * 0.35) + (scores.oop * 0.15);
-    if (player.archetypeKey === 'target' && player.morphology.heightCm >= 190) baseFit += 5.0;
+    if (['target', 'runner_in_behind', 'pocket_player'].includes(arch)) baseFit += 8.0;
+    if (['soldier', 'disrupter', 'steady_eddy'].includes(arch)) baseFit -= 15.0;
+    if (arch === 'target' && player.morphology.heightCm >= 190) baseFit += 4.0;
   }
 
   // 2. Blueprint Alignment Modifiers
   if (bp) {
-    if (bp.favoredArchetypes && bp.favoredArchetypes.includes(player.archetypeKey)) baseFit += 6.0;
-    if (bp.unfavoredArchetypes && bp.unfavoredArchetypes.includes(player.archetypeKey)) baseFit -= 6.0;
+    if (bp.favoredArchetypes && bp.favoredArchetypes.includes(arch)) baseFit += 5.0;
+    if (bp.unfavoredArchetypes && bp.unfavoredArchetypes.includes(arch)) baseFit -= 5.0;
 
     if (bp.keyPillars) {
       bp.keyPillars.forEach(pillar => {
@@ -265,22 +299,37 @@ function autoAssignLineup(team) {
     availableKeepers[0].slot = 'S1';
   }
 
-  // 2. Assign Outfield Starters (S2 through S11)
+// 2. Assign Outfield Starters (Spine First)
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   let availableOutfield = team.squad.filter(p => !p.isGK);
 
-  for (let i = 1; i < 11; i++) {
-    const role = formRoles[i];
+  // Map each outfield slot with its original index (S2 through S11)
+  const outfieldSlots = formRoles.slice(1).map((role, idx) => ({
+    role,
+    slotCode: `S${idx + 2}`
+  }));
+
+  // Role priority: lock the spine first so CBs/STs get prime candidates
+  const getRolePriority = (role) => {
+    if (role === 'CB') return 1;
+    if (role === 'ST') return 2;
+    if (['DM', 'CM', 'AM'].includes(role)) return 3;
+    return 4; // Flanks: LB, RB, LM, RM, LW, RW
+  };
+
+  outfieldSlots.sort((a, b) => getRolePriority(a.role) - getRolePriority(b.role));
+
+  for (const slot of outfieldSlots) {
     if (availableOutfield.length === 0) break;
 
     availableOutfield.sort((a, b) => {
-      const fitA = evaluateSlotFit(a, role, bpKey);
-      const fitB = evaluateSlotFit(b, role, bpKey);
+      const fitA = evaluateSlotFit(a, slot.role, bpKey);
+      const fitB = evaluateSlotFit(b, slot.role, bpKey);
       return fitB - fitA;
     });
 
     const chosen = availableOutfield.shift();
-    chosen.slot = `S${i + 1}`;
+    chosen.slot = slot.slotCode;
   }
 
   // 3. Assign Bench (B1 to B9) - Backup GK first, then overall versatile depth
