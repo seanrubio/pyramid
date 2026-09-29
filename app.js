@@ -328,7 +328,7 @@ function renderSquadView(container) {
       <table>
         <thead>
           <tr>
-            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 110px;">Slot</th>
+            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 68px;">Slot</th>
             <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
             <th onclick="sortSquad('archetypeName')" style="cursor: pointer;">Archetype</th>
             <th onclick="sortSquad('age')" style="cursor: pointer; text-align: center;">Age</th>
@@ -355,19 +355,27 @@ function renderSquadView(container) {
             const weightStr = formatWeight(p.morphology.weightKg, units);
 
             // Construct swap options
-            const isRes = (p.slot === 'RES');
             const optionsHtml = [
-              `<option value="RES" ${isRes ? 'selected' : ''}>${isRes ? 'RES' : 'RES (Reserves)'}</option>`,
+              `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
               ...playableSlots.map(s => {
                 const isCurrent = (p.slot === s.val);
                 const occupant = occupantMap[s.val];
                 let text = s.label;
-                if (!isCurrent) {
-                  text += occupant ? ` (${formatShortName(occupant.name)})` : ` (Empty)`;
+                if (!isCurrent && occupant) {
+                  text += ` (${formatShortName(occupant.name)})`;
                 }
                 return `<option value="${s.val}" ${isCurrent ? 'selected' : ''}>${text}</option>`;
               })
             ].join('');
+
+            return `
+              <tr>
+                <td>
+                  <select onchange="handleSlotChange('${p.id}', this.value)" style="width: auto; max-width: 65px; padding: 2px 4px; font-size: 11px;">
+                    ${optionsHtml}
+                  </select>
+                </td>
+                <td style="font-weight: 600; color: var(--text);">
 
             return `
               <tr>
