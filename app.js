@@ -1,4 +1,4 @@
-// --- NO-FRILLS UI CONTROLLER ---
+// --- NO-FRILLS UI CONTROLLER (8-PILLAR INTEGRATION) ---
 
 let DB = null;
 let state = null;
@@ -186,7 +186,7 @@ function renderLayout() {
   document.getElementById('app-root').innerHTML = `
     <!-- Top Global Bar -->
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
-      <div style="max-width: 1100px; margin: auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
         <div style="display: flex; align-items: center; gap: 12px;">
           <strong style="color: #fff; font-size: 13px;">${userTeam.name}</strong>
           <span style="color: var(--accent);">DIV ${userTeam.div}</span>
@@ -199,7 +199,7 @@ function renderLayout() {
         </div>
       </div>
       <!-- Tab Strip -->
-      <div style="max-width: 1100px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
+      <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
         ${['squad', 'tactics', 'table', 'transfers'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
@@ -207,7 +207,7 @@ function renderLayout() {
     </header>
 
     <!-- Main Content Shell -->
-    <main style="max-width: 1100px; margin: 16px auto; padding: 0 16px;" id="view-workspace"></main>
+    <main style="max-width: 1200px; margin: 16px auto; padding: 0 16px;" id="view-workspace"></main>
   `;
 
   renderCurrentView();
@@ -231,17 +231,20 @@ function renderCurrentView() {
   else if (activeTab === 'transfers') renderTransfersView(ws);
 }
 
-// Helper to determine natural pitch order ranking
 function getSlotRank(slot) {
-  if (slot.startsWith('S')) {
-    const num = parseInt(slot.replace('S', ''), 10);
-    return num; // S1 through S11
-  }
-  if (slot.startsWith('B')) {
-    const num = parseInt(slot.replace('B', ''), 10);
-    return 100 + num; // B1 through B9
-  }
-  return 999; // RES
+  if (slot.startsWith('S')) return parseInt(slot.replace('S', ''), 10);
+  if (slot.startsWith('B')) return 100 + parseInt(slot.replace('B', ''), 10);
+  return 999;
+}
+
+// Helper to render colored trait tags
+function renderTraitBadges(traits = []) {
+  if (!traits.length) return '';
+  return traits.map(t => {
+    const isAsset = t.startsWith('[+');
+    const label = t.replace(/[\[\]\+\-]/g, '');
+    return `<span class="badge ${isAsset ? 'badge-asset' : 'badge-liability'}">${isAsset ? '+' : '-'}${label}</span>`;
+  }).join('');
 }
 
 // --- SQUAD DIRECTORY ---
@@ -269,13 +272,18 @@ function renderSquadView(container) {
         <thead>
           <tr>
             <th onclick="sortSquad('slot')" style="cursor: pointer;">Slot</th>
-            <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
+            <th onclick="sortSquad('name')" style="cursor: pointer;">Player / Archetype</th>
             <th>Pos</th>
-            <th onclick="sortSquad('technique')" style="cursor: pointer; text-align: center;">TEC</th>
-            <th onclick="sortSquad('decisionMaking')" style="cursor: pointer; text-align: center;">DEC</th>
-            <th onclick="sortSquad('bodyControl')" style="cursor: pointer; text-align: center;">BOD</th>
-            <th onclick="sortSquad('athleticism')" style="cursor: pointer; text-align: center;">ATH</th>
-            <th onclick="sortSquad('character')" style="cursor: pointer; text-align: center;">CHA</th>
+            <th style="text-align: center;">Size</th>
+            <th onclick="sortSquad('proprioception')" style="cursor: pointer; text-align: center;" title="Proprioception & Kinesthesia">PRO</th>
+            <th onclick="sortSquad('dynamicPower')" style="cursor: pointer; text-align: center;" title="Dynamic Power & Braking">POW</th>
+            <th onclick="sortSquad('bioenergetics')" style="cursor: pointer; text-align: center;" title="Bioenergetics">BIO</th>
+            <th onclick="sortSquad('scanning')" style="cursor: pointer; text-align: center;" title="Scanning & Visual Extraction">SCA</th>
+            <th onclick="sortSquad('processing')" style="cursor: pointer; text-align: center;" title="Processing Speed">PRC</th>
+            <th onclick="sortSquad('regulation')" style="cursor: pointer; text-align: center;" title="Autonomic Regulation">REG</th>
+            <th onclick="sortSquad('grit')" style="cursor: pointer; text-align: center;" title="Psychological Grit">GRT</th>
+            <th onclick="sortSquad('stewardship')" style="cursor: pointer; text-align: center;" title="Self-Stewardship">STE</th>
+            <th style="text-align: center;" title="Phase Glyphs (Hardware / Software / OS)">HW/SW/OS</th>
             <th style="text-align: center;">Morale</th>
             <th style="text-align: center;">Form</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
@@ -286,6 +294,8 @@ function renderSquadView(container) {
           ${team.squad.map(p => {
             const form = p.ratingsHistory.length ? (p.ratingsHistory.reduce((a, b) => a + b, 0) / p.ratingsHistory.length).toFixed(1) : '-';
             const emoji = MORALE_MAP[p.morale] || '😐';
+            const morph = p.morphology ? `${p.morphology.heightCm}cm<br><span class="sub-meta">${p.morphology.weightKg}kg</span>` : '-';
+            
             return `
               <tr>
                 <td>
@@ -293,13 +303,22 @@ function renderSquadView(container) {
                     ${allOpts.map(o => `<option value="${o.val}" ${p.slot === o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
                   </select>
                 </td>
-                <td style="font-weight: 600; color: var(--text);">${p.name}</td>
+                <td>
+                  <div style="font-weight: 600; color: var(--text);">${p.name}</div>
+                  <div class="sub-meta">${p.archetypeName || 'Generalist'}</div>
+                  <div style="margin-top: 2px;">${renderTraitBadges(p.traits)}</div>
+                </td>
                 <td style="color: var(--accent);">${p.positions.join('/')}</td>
-                <td style="text-align: center;">${p.technique}</td>
-                <td style="text-align: center;">${p.decisionMaking}</td>
-                <td style="text-align: center;">${p.bodyControl}</td>
-                <td style="text-align: center;">${p.athleticism}</td>
-                <td style="text-align: center;">${p.character}</td>
+                <td style="text-align: center; font-size: 11px;">${morph}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.proprioception}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.dynamicPower}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.bioenergetics}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.scanning}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.processing}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.regulation}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.grit}</td>
+                <td style="text-align: center; font-weight: 600;">${p.attributes.stewardship}</td>
+                <td style="text-align: center;" class="glyph-tag">${p.profileGlyphs || '✓/✓/✓'}</td>
                 <td style="text-align: center; font-size: 13px;" title="${p.morale}">${emoji}</td>
                 <td style="text-align: center; color: var(--accent);">${form}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
@@ -351,8 +370,10 @@ function sortSquad(key) {
       return squadSort.asc ? rankA - rankB : rankB - rankA;
     }
 
-    let valA = a[squadSort.key];
-    let valB = b[squadSort.key];
+    // Check if sorting by an 8-pillar attribute
+    let valA = a.attributes && a.attributes[squadSort.key] !== undefined ? a.attributes[squadSort.key] : a[squadSort.key];
+    let valB = b.attributes && b.attributes[squadSort.key] !== undefined ? b.attributes[squadSort.key] : b[squadSort.key];
+
     if (typeof valA === 'string') return squadSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
     return squadSort.asc ? (valA || 0) - (valB || 0) : (valB || 0) - (valA || 0);
   });
@@ -407,7 +428,7 @@ function setTactics(k, v) {
   renderTacticsView(document.getElementById('view-workspace'));
 }
 
-// --- LEAGUE TABLE (WITH GF & GA) ---
+// --- LEAGUE TABLE ---
 function renderTableView(container) {
   const rows = [...state.tables[tableDiv]].sort((a, b) => b.pts - a.pts || b.gd - a.gd);
 
@@ -464,7 +485,7 @@ function setTableDiv(d) {
   renderTableView(document.getElementById('view-workspace'));
 }
 
-// --- TRANSFERS VIEW (PROPER M / K VALUES) ---
+// --- TRANSFERS VIEW ---
 function renderTransfersView(container) {
   const all = [];
   Object.values(state.teams).forEach(t => {
@@ -480,13 +501,13 @@ function renderTransfersView(container) {
       <table>
         <thead>
           <tr>
-            <th>Player</th>
+            <th>Player / Archetype</th>
             <th>Pos</th>
             <th>Club</th>
             <th style="text-align: center;">Div</th>
-            <th style="text-align: center;">TEC</th>
-            <th style="text-align: center;">DEC</th>
-            <th style="text-align: center;">ATH</th>
+            <th style="text-align: center;">Size</th>
+            <th style="text-align: center;">Traits</th>
+            <th style="text-align: center;">HW/SW/OS</th>
             <th style="text-align: right;">Valuation</th>
             <th style="text-align: center;">Action</th>
           </tr>
@@ -494,13 +515,16 @@ function renderTransfersView(container) {
         <tbody>
           ${targets.map(p => `
             <tr>
-              <td style="font-weight: 600;">${p.name}</td>
+              <td>
+                <span style="font-weight: 600;">${p.name}</span>
+                <span class="sub-meta">${p.archetypeName || 'Generalist'}</span>
+              </td>
               <td style="color: var(--accent);">${p.positions.join('/')}</td>
               <td style="color: var(--text-muted);">${p.club}</td>
               <td style="text-align: center;">${p.div}</td>
-              <td style="text-align: center;">${p.technique}</td>
-              <td style="text-align: center;">${p.decisionMaking}</td>
-              <td style="text-align: center;">${p.athleticism}</td>
+              <td style="text-align: center; font-size: 11px;">${p.morphology ? `${p.morphology.heightCm}cm` : '-'}</td>
+              <td style="text-align: center;">${renderTraitBadges(p.traits)}</td>
+              <td style="text-align: center;" class="glyph-tag">${p.profileGlyphs || '✓/✓/✓'}</td>
               <td style="text-align: right; color: var(--green);">${formatMoney(p.val)}</td>
               <td style="text-align: center;">
                 <button onclick="signTarget('${p.id}', '${p.clubId}')" class="primary" style="padding: 2px 8px;">SIGN</button>
