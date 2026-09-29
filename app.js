@@ -4,6 +4,7 @@ let DB = null;
 let state = null;
 let activeTab = 'squad';
 let tableDiv = 10;
+let fixturesDiv = null;
 
 let squadSort = { key: 'slot', asc: true };
 let tableSort = { key: 'pts', asc: false };
@@ -141,7 +142,7 @@ function handleCreateClub(e) {
   const userTeamId = 'club_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const teams = {};
 
-// User Team: standard baseline, no forced blueprint assignment
+  // User Team: standard baseline, no forced blueprint assignment
   teams[userTeamId] = {
     id: userTeamId, name, country, div: 10, stadium,
     rep: 15, budget: 450000, wageBudget: 18000,
@@ -218,7 +219,7 @@ function renderLayout() {
       </div>
       <!-- Tab Strip -->
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
-        ${['squad', 'tactics', 'table', 'transfers'].map(tab => `
+        ${['squad', 'tactics', 'fixtures', 'table', 'transfers'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -245,6 +246,7 @@ function renderCurrentView() {
   const ws = document.getElementById('view-workspace');
   if (activeTab === 'squad') renderSquadView(ws);
   else if (activeTab === 'tactics') renderTacticsView(ws);
+  else if (activeTab === 'fixtures') renderFixturesView(ws);
   else if (activeTab === 'table') renderTableView(ws);
   else if (activeTab === 'transfers') renderTransfersView(ws);
 }
@@ -543,6 +545,108 @@ function setTactics(k, v) {
   state.teams[state.userTeamId].tactics[k] = v;
   saveGameState();
   renderTacticsView(document.getElementById('view-workspace'));
+}
+
+// --- CLUB FIXTURES VIEW ---
+function renderFixturesView(container) {
+  const userTeam = state.teams[state.userTeamId];
+  const divFixtures = state.fixtures[userTeam.div] || [];
+
+  // Extract the user club's scheduled match from every round
+  const clubSchedule = [];
+  divFixtures.forEach((roundMatches, idx) => {
+    const match = roundMatches.find(m => m.home === state.userTeamId || m.away === state.userTeamId);
+    if (match) {
+      clubSchedule.push({
+        round: idx + 1,
+        match,
+        isHome: match.home === state.userTeamId,
+        opponent: state.teams[match.home === state.userTeamId ? match.away : match.home]
+      });
+    }
+  });
+
+  const playedCount = clubSchedule.filter(f => f.match.played).length;
+
+  container.innerHTML = `
+    <div style="max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px;">
+      
+      <!-- Fixture Header -->
+      <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+        <div>
+          <strong style="color: #fff; font-size: 14px;">${userTeam.name.toUpperCase()} FIXTURES & RESULTS</strong>
+          <span style="color: var(--text-muted); font-size: 12px; margin-left: 8px;">DIVISION ${userTeam.div}</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted);">
+          COMPLETED: <strong style="color: var(--text);">${playedCount}</strong> / ${clubSchedule.length}
+        </div>
+      </div>
+
+      <!-- Schedule Table -->
+      <div class="panel" style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px; text-align: center;">Rnd</th>
+              <th style="width: 55px; text-align: center;">Venue</th>
+              <th>Opponent</th>
+              <th style="width: 80px; text-align: center;">Result</th>
+              <th style="width: 100px; text-align: center;">xG</th>
+              <th style="width: 60px; text-align: center;">Outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${clubSchedule.map(item => {
+              const { round, match, isHome, opponent } = item;
+              const isCurrent = (round === state.round);
+
+              let venueBadge = isHome 
+                ? '<span style="color: var(--accent); font-weight: 700;">H</span>' 
+                : '<span style="color: var(--text-muted);">A</span>';
+
+              let scoreDisplay = '-';
+              let xgDisplay = '-';
+              let outcomeBadge = '-';
+
+              if (match.played) {
+                const teamGoals = isHome ? match.hg : match.ag;
+                const oppGoals = isHome ? match.ag : match.hg;
+                const teamXg = isHome ? match.hxg : match.axg;
+                const oppXg = isHome ? match.axg : match.hxg;
+
+                scoreDisplay = `<strong style="color: #fff; font-size: 13px;">${teamGoals} -${oppGoals}</strong>`;
+                xgDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${teamXg.toFixed(1)} -${oppXg.toFixed(1)}</span>`;
+
+                if (teamGoals > oppGoals) {
+                  outcomeBadge = '<span class="badge badge-asset" style="padding: 1px 6px;">W</span>';
+                } else if (teamGoals === oppGoals) {
+                  outcomeBadge = '<span style="color: var(--amber); font-weight: 700; font-size: 11px;">D</span>';
+                } else {
+                  outcomeBadge = '<span class="badge badge-liability" style="padding: 1px 6px;">L</span>';
+                }
+              } else if (isCurrent) {
+                scoreDisplay = '<span style="color: var(--accent); font-weight: 700; font-size: 11px;">NEXT UP</span>';
+              }
+
+              return `
+                <tr style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08);' : ''}">
+                  <td style="text-align: center; color: var(--text-muted); font-family: monospace;">${round}</td>
+                  <td style="text-align: center;">${venueBadge}</td>
+                  <td style="font-weight: 600; color: var(--text);">
+                    ${opponent ? opponent.name : 'Unknown Club'}
+                  </td>
+                  <td style="text-align: center; font-family: monospace;">${scoreDisplay}</td>
+                  <td style="text-align: center;">${xgDisplay}</td>
+                  <td style="text-align: center;">${outcomeBadge}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  `;
 }
 
 // --- LEAGUE TABLE ---
