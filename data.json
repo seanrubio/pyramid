@@ -509,14 +509,14 @@
       "name": "Steady Eddy",
       "morph": { "heightDelta": 0, "bmiDelta": 0.0 },
       "weights": {
-        "proprioception": -0.75,
-        "dynamicPower": -0.75,
-        "bioenergetics": -0.75,
+        "proprioception": -0.50,
+        "dynamicPower": -0.50,
+        "bioenergetics": -0.50,
         "scanning": 0.00,
         "processing": 0.00,
-        "regulation": 0.50,
+        "regulation": 0.00,
         "grit": 0.00,
-        "stewardship": 1.75
+        "stewardship": 1.50
       }
     },
     "gk_shot_stopper": {
