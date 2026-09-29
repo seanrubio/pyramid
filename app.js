@@ -283,15 +283,32 @@ function renderGlyphCell(glyph) {
   return `<span style="font-size: 15px; font-weight: 700; color: ${color};">${glyph}</span>`;
 }
 
+// Formats "Oliver Wilson" to "O. Wilson" for select labels
+function formatShortName(fullName) {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length > 1) {
+    return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+  }
+  return fullName;
+}
+
 // --- SQUAD DIRECTORY ---
 function renderSquadView(container) {
   const team = state.teams[state.userTeamId];
   const units = (state.config && state.config.units) || 'metric';
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   
-  const starterOpts = formRoles.map((role, i) => ({ val: `S${i + 1}`, label: role }));
-  const benchOpts = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: 'BN' }));
-  const allOpts = [{ val: 'RES', label: '-' }, ...starterOpts, ...benchOpts];
+  const starterSlots = formRoles.map((role, i) => ({ val: `S${i + 1}`, label: role }));
+  const benchSlots = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: `BN ${i + 1}` }));
+  const playableSlots = [...starterSlots, ...benchSlots];
+
+  // Map slot assignments to occupant names
+  const occupantMap = {};
+  team.squad.forEach(sqP => {
+    if (sqP.slot && sqP.slot !== 'RES') {
+      occupantMap[sqP.slot] = sqP;
+    }
+  });
 
   const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
 
@@ -311,16 +328,16 @@ function renderSquadView(container) {
       <table>
         <thead>
           <tr>
-            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 75px;">Slot</th>
+            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 110px;">Slot</th>
             <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
             <th onclick="sortSquad('archetypeName')" style="cursor: pointer;">Archetype</th>
             <th onclick="sortSquad('age')" style="cursor: pointer; text-align: center;">Age</th>
             <th onclick="sortSquad('heightCm')" style="cursor: pointer; text-align: center;">${hUnit}</th>
             <th onclick="sortSquad('weightKg')" style="cursor: pointer; text-align: center;">${wUnit}</th>
             <th>Traits</th>
-            <th style="text-align: center; width: 42px;" title="In Possession">IP</th>
-            <th style="text-align: center; width: 42px;" title="Out of Possession">OOP</th>
-            <th style="text-align: center; width: 42px;" title="Transitions">TR</th>
+            <th onclick="sortSquad('ip')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort In Possession">IP</th>
+            <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Out of Possession">OOP</th>
+            <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Transitions">TR</th>
             <th onclick="sortSquad('avgRating')" style="cursor: pointer; text-align: center;" title="Season Average Rating">Avg</th>
             <th style="text-align: center;" title="Last 5 Matches Form">Form</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
@@ -337,11 +354,29 @@ function renderSquadView(container) {
             const heightStr = formatHeight(p.morphology.heightCm, units);
             const weightStr = formatWeight(p.morphology.weightKg, units);
 
+            // Construct swap options
+            const optionsHtml = [
+              `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES (Reserves)</option>`,
+              ...playableSlots.map(s => {
+                const isCurrent = (p.slot === s.val);
+                const occupant = occupantMap[s.val];
+                let text = s.label;
+                if (isCurrent) {
+                  text += ` (Current)`;
+                } else if (occupant) {
+                  text += ` (${formatShortName(occupant.name)})`;
+                } else {
+                  text += ` (Empty)`;
+                }
+                return `<option value="${s.val}" ${isCurrent ? 'selected' : ''}>${text}</option>`;
+              })
+            ].join('');
+
             return `
               <tr>
                 <td>
                   <select onchange="handleSlotChange('${p.id}', this.value)" style="width: 100%;">
-                    ${allOpts.map(o => `<option value="${o.val}" ${p.slot === o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
+                    ${optionsHtml}
                   </select>
                 </td>
                 <td style="font-weight: 600; color: var(--text);">
@@ -376,7 +411,9 @@ function handleSlotChange(pid, newSlot) {
   const oldSlot = player.slot;
   if (newSlot !== 'RES') {
     const occupant = team.squad.find(p => p.id !== pid && p.slot === newSlot);
-    if (occupant) occupant.slot = oldSlot;
+    if (occupant) {
+      occupant.slot = oldSlot; // Direct atomic swap
+    }
   }
   player.slot = newSlot;
   saveGameState();
@@ -395,15 +432,46 @@ function sortSquad(key) {
     squadSort.asc = !squadSort.asc;
   } else {
     squadSort.key = key;
-    squadSort.asc = true;
+    squadSort.asc = (key === 'name' || key === 'slot'); // Alphabetical / slots default ascending, stats default descending
   }
 
   const team = state.teams[state.userTeamId];
+  const GLYPH_WEIGHTS = { '+': 2, '✓': 1, '-': 0 };
+
   team.squad.sort((a, b) => {
+    // 1. Sort by Slot position
     if (squadSort.key === 'slot') {
       const rankA = getSlotRank(a.slot);
       const rankB = getSlotRank(b.slot);
       return squadSort.asc ? rankA - rankB : rankB - rankA;
+    }
+
+    // 2. Sort by Last Name
+    if (squadSort.key === 'name') {
+      const getLastName = (fullName) => {
+        const parts = fullName.trim().split(/\s+/);
+        return parts[parts.length - 1].toLowerCase();
+      };
+      const cmp = getLastName(a.name).localeCompare(getLastName(b.name));
+      return squadSort.asc ? cmp : -cmp;
+    }
+
+    // 3. Sort by Phase Glyphs (IP / OOP / TR)
+    if (['ip', 'oop', 'tr'].includes(squadSort.key)) {
+      const gA = parseGlyphs(a.phaseGlyphs)[squadSort.key];
+      const gB = parseGlyphs(b.phaseGlyphs)[squadSort.key];
+      const valA = GLYPH_WEIGHTS[gA] ?? 1;
+      const valB = GLYPH_WEIGHTS[gB] ?? 1;
+      
+      if (valA !== valB) {
+        return squadSort.asc ? valA - valB : valB - valA;
+      }
+      // Tie-breaker: player overall value
+      const getLastName = (fullName) => {
+        const parts = fullName.trim().split(/\s+/);
+        return parts[parts.length - 1].toLowerCase();
+      };
+      return getLastName(a.name).localeCompare(getLastName(b.name));
     }
 
     if (squadSort.key === 'heightCm') {
