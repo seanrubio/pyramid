@@ -218,12 +218,10 @@ function renderLayout() {
           </span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span>BALANCE: <strong style="color: var(--green);">${formatMoney(userTeam.budget)}</strong></span>
-        ${isSeasonOver ? `
-          <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
-        ` : `
-          <button onclick="handleSimRound()" class="primary">${state.round === state.maxRounds ? 'PLAY FINAL ROUND' : 'PLAY ROUND'}</button>
-        `}
+          <span>BALANCE: <strong style="color: var(--green);">${formatMoney(userTeam.budget)}</strong></span>${isSeasonOver ? `
+            <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
+          ` : `
+            <button onclick="handleSimRound()" class="primary">${state.round === state.maxRounds ? 'PLAY FINAL ROUND' : 'PLAY ROUND'}</button>
           `}
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
