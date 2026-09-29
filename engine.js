@@ -1,11 +1,4 @@
-// --- SIMULATION ENGINE (8-PILLAR ARCHITECTURE) ---
-
-const POS_GROUPS = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'ST'];
-const SECONDARY_MAP = {
-  'LB': ['LWB', 'LM'], 'RB': ['RWB', 'RM'], 'CB': ['DM'],
-  'DM': ['CM', 'CB'], 'CM': ['DM', 'AM'], 'AM': ['CM', 'LW', 'RW'],
-  'LM': ['LW', 'LB'], 'RM': ['RW', 'RB'], 'LW': ['LM', 'ST'], 'RW': ['RM', 'ST'], 'ST': ['AM']
-};
+// --- SIMULATION ENGINE (PHASE TRIAD & POSITIONLESS REFACTOR) ---
 
 const FORMATIONS = {
   '4-4-2 Flat': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'],
@@ -19,23 +12,15 @@ const FORMATIONS = {
   '5-4-1': ['GK', 'LB', 'CB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST']
 };
 
-// Logical mapping of pitch positions to archetypes
-const POSITION_ARCHETYPES = {
-  'GK': ['gk_shot_stopper', 'gk_cross_collector', 'gk_possession_platform', 'gk_disrupter', 'gk_organizer'],
-  'CB': ['target', 'soldier', 'disrupter', 'anticipator', 'steady_eddy'],
-  'LB': ['two_way', 'runner_in_behind', 'soldier', 'steady_eddy'],
-  'RB': ['two_way', 'runner_in_behind', 'soldier', 'steady_eddy'],
-  'DM': ['disrupter', 'soldier', 'anticipator', 'two_way', 'steady_eddy'],
-  'CM': ['two_way', 'artist', 'pocket_player', 'anticipator', 'steady_eddy'],
-  'LM': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist', 'two_way'],
-  'RM': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist', 'two_way'],
-  'AM': ['pocket_player', 'artist', 'dribblinho', 'anticipator'],
-  'LW': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist'],
-  'RW': ['dribblinho', 'runner_in_behind', 'pocket_player', 'artist'],
-  'ST': ['target', 'runner_in_behind', 'dribblinho', 'soldier', 'pocket_player']
-};
+const GK_ARCHETYPES = [
+  'gk_shot_stopper', 'gk_cross_collector', 'gk_possession_platform', 'gk_disrupter', 'gk_organizer'
+];
 
-// Box-Muller Gaussian Random
+const OUTFIELD_ARCHETYPES = [
+  'runner_in_behind', 'pocket_player', 'target', 'dribblinho', 'artist', 
+  'anticipator', 'disrupter', 'soldier', 'two_way', 'steady_eddy'
+];
+
 function randomGaussian(mean = 0, stdDev = 1) {
   let u = 1 - Math.random();
   let v = Math.random();
@@ -54,22 +39,20 @@ function generatePlayerName(region = 'anglo') {
   return `${first} ${last}`;
 }
 
-// Player Generation using 8 Pillars, Morphology, and Trait Engine
-function generatePlayer(pos, div, natCode = null) {
+// Generate Player without explicit position strings
+function generatePlayer(isGK, div, natCode = null) {
   const countryObj = natCode ? getCountry(natCode) : DB.countries[Math.floor(Math.random() * DB.countries.length)];
   
-  // Select Archetype based on position
-  const candidateKeys = POSITION_ARCHETYPES[pos] || ['steady_eddy'];
-  const archetypeKey = candidateKeys[Math.floor(Math.random() * candidateKeys.length)];
+  const pool = isGK ? GK_ARCHETYPES : OUTFIELD_ARCHETYPES;
+  const archetypeKey = pool[Math.floor(Math.random() * pool.length)];
   const archetype = DB.archetypes[archetypeKey];
 
-  // Mathematical calibration (μ = 94 - div * 6.2)
   const tierMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
   const attributes = {};
   const traits = [];
   const thresholdDelta = 1.5 * DB.tierConfig.archetypeSigma;
 
-  // 8 Pillars generation & ±1.5σ Trait triggers
+  // 8 MECE Pillars
   for (const [pillar, weight] of Object.entries(archetype.weights)) {
     const rawVal = tierMean + (weight * DB.tierConfig.archetypeSigma) + randomGaussian(0, DB.tierConfig.noiseSigma);
     const score = Math.max(1, Math.min(99, Math.round(rawVal)));
@@ -82,88 +65,95 @@ function generatePlayer(pos, div, natCode = null) {
     }
   }
 
-  // Morphology (Height, BMI, Weight)
-  const baseMorph = archetype.isGK ? DB.morphologyBaselines.goalkeeper : DB.morphologyBaselines.outfield;
+  // Morphology
+  const baseMorph = isGK ? DB.morphologyBaselines.goalkeeper : DB.morphologyBaselines.outfield;
   const heightCm = Math.round(randomGaussian(baseMorph.heightMean + archetype.morph.heightDelta, baseMorph.heightStd));
   const bmi = +(randomGaussian(baseMorph.bmiMean + archetype.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
   const weightKg = Math.round(bmi * Math.pow(heightCm / 100, 2));
 
-  // Evaluation Phase Glyphs (Hardware, Software, OS)
+  // Phase Glyphs: IP / OOP / TR
   const getGlyph = (val) => (val >= tierMean + 4 ? "+" : val <= tierMean - 4 ? "-" : "✓");
-  const hardwareAvg = (attributes.proprioception + attributes.dynamicPower + attributes.bioenergetics) / 3;
-  const softwareAvg = (attributes.scanning + attributes.processing) / 2;
-  const osAvg = (attributes.regulation + attributes.grit + attributes.stewardship) / 3;
-  const profileGlyphs = `${getGlyph(hardwareAvg)} / ${getGlyph(softwareAvg)} / ${getGlyph(osAvg)}`;
+  const ipAvg = (attributes.proprioception + attributes.scanning + attributes.processing) / 3;
+  const oopAvg = (attributes.dynamicPower + attributes.grit + attributes.scanning) / 3;
+  const trAvg = (attributes.bioenergetics + attributes.processing + attributes.regulation + attributes.stewardship) / 4;
+  const phaseGlyphs = `${getGlyph(ipAvg)} / ${getGlyph(oopAvg)} / ${getGlyph(trAvg)}`;
 
-  // Secondary Positions
-  const positions = [pos];
-  if (pos !== 'GK' && Math.random() < 0.35 && SECONDARY_MAP[pos]) {
-    const potential = SECONDARY_MAP[pos];
-    positions.push(potential[Math.floor(Math.random() * potential.length)]);
-  }
-
-  // Market Valuation scaled to 1–99 attributes
-  const overallAvg = (hardwareAvg + softwareAvg + osAvg) / 3;
+  // Market Valuation
+  const overallAvg = (ipAvg + oopAvg + trAvg) / 3;
   const tierMult = Math.pow(1.5, (11 - div));
   const val = Math.round((Math.pow(overallAvg / 10, 2.5) * 1200 * tierMult) / 5000) * 5000;
   const wage = Math.max(350, Math.round((val * 0.0025) / 50) * 50);
-  const morales = ['Very Low', 'Low', 'OK', 'High', 'Very High'];
 
   return {
     id: 'p_' + Math.random().toString(36).substr(2, 9),
     name: generatePlayerName(countryObj.region),
     nat: countryObj.code,
-    positions,
+    isGK,
     archetypeKey,
     archetypeName: archetype.name,
     age: 18 + Math.floor(Math.random() * 16),
     morphology: { heightCm, weightKg, bmi },
     attributes,
     traits,
-    profileGlyphs,
+    phaseGlyphs,
     val, wage,
     contractYrs: 1 + Math.floor(Math.random() * 4),
-    morale: morales[Math.floor(Math.random() * morales.length)],
     condition: 90 + Math.floor(Math.random() * 11),
     minutesPlayed: 0,
     ratingsHistory: [],
-    slot: 'RES',
-    trainingFocus: 'balanced'
+    slot: 'RES'
   };
 }
 
 function createFullSquad(div, primaryCountryCode) {
   const squad = [];
-  const roles = ['GK', 'GK', 'CB', 'CB', 'CB', 'CB', 'LB', 'LB', 'RB', 'RB', 'DM', 'DM', 'CM', 'CM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'ST', 'ST', 'ST'];
-  roles.forEach(pos => {
+  // 3 Keepers, 20 Outfielders
+  for (let i = 0; i < 3; i++) {
     const nat = (Math.random() < 0.7) ? primaryCountryCode : null;
-    squad.push(generatePlayer(pos, div, nat));
-  });
+    squad.push(generatePlayer(true, div, nat));
+  }
+  for (let i = 0; i < 20; i++) {
+    const nat = (Math.random() < 0.7) ? primaryCountryCode : null;
+    squad.push(generatePlayer(false, div, nat));
+  }
   return squad;
 }
 
-// Lineup sorting based on position fit and comprehensive 8-pillar rating
+// Auto-assign based on tactical phase fit rather than rigid position strings
 function autoAssignLineup(team) {
-  const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   team.squad.forEach(p => p.slot = 'RES');
-  const available = [...team.squad];
+  
+  // Assign Goalkeeper (Slot S1)
+  const availableKeepers = team.squad.filter(p => p.isGK);
+  availableKeepers.sort((a, b) => {
+    const scoreA = a.attributes.dynamicPower + a.attributes.processing;
+    const scoreB = b.attributes.dynamicPower + b.attributes.processing;
+    return scoreB - scoreA;
+  });
+  if (availableKeepers.length > 0) {
+    availableKeepers[0].slot = 'S1';
+  }
 
-  formRoles.forEach((role, idx) => {
-    const slotKey = `S${idx + 1}`;
-    available.sort((a, b) => {
-      const aFit = a.positions.includes(role) ? 15 : 0;
-      const bFit = b.positions.includes(role) ? 15 : 0;
-      
-      const aScore = (a.attributes.proprioception + a.attributes.dynamicPower + a.attributes.scanning + a.attributes.processing) / 4 + aFit;
-      const bScore = (b.attributes.proprioception + b.attributes.dynamicPower + b.attributes.scanning + b.attributes.processing) / 4 + bFit;
-      
-      return bScore - aScore;
-    });
-    if (available.length > 0) available.shift().slot = slotKey;
+  // Assign Outfield Starters (S2 through S11)
+  const availableOutfield = team.squad.filter(p => !p.isGK);
+  availableOutfield.sort((a, b) => {
+    const scoreA = Object.values(a.attributes).reduce((acc, v) => acc + v, 0);
+    const scoreB = Object.values(b.attributes).reduce((acc, v) => acc + v, 0);
+    return scoreB - scoreA;
   });
 
+  for (let i = 2; i <= 11; i++) {
+    if (availableOutfield.length > 0) {
+      availableOutfield.shift().slot = `S${i}`;
+    }
+  }
+
+  // Assign Bench (B1 to B9)
+  const remaining = team.squad.filter(p => p.slot === 'RES');
   for (let b = 1; b <= 9; b++) {
-    if (available.length > 0) available.shift().slot = `B${b}`;
+    if (remaining.length > 0) {
+      remaining.shift().slot = `B${b}`;
+    }
   }
 }
 
@@ -171,7 +161,7 @@ function validateLineup(team) {
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
   if (starters.length !== 11) return { valid: false, error: `Lineup incomplete: ${starters.length}/11 starters assigned.` };
 
-  const hasGk = starters.some(p => p.positions.includes('GK'));
+  const hasGk = starters.some(p => p.isGK);
   if (!hasGk) return { valid: false, error: 'No goalkeeper assigned in starting XI.' };
 
   return { valid: true };
@@ -246,14 +236,13 @@ function runRoundSimulation() {
       const hStarters = homeTeam.squad.filter(p => p.slot.startsWith('S'));
       const aStarters = awayTeam.squad.filter(p => p.slot.startsWith('S'));
 
-      // Calculate team strength across Hardware, Software, and OS
-      const getTeamPower = (starters) => {
+      const getPhasePower = (starters) => {
         if (starters.length === 0) return 40;
         const total = starters.reduce((acc, p) => {
-          const hw = (p.attributes.proprioception + p.attributes.dynamicPower + p.attributes.bioenergetics) / 3;
-          const sw = (p.attributes.scanning + p.attributes.processing) / 2;
-          const os = (p.attributes.regulation + p.attributes.grit + p.attributes.stewardship) / 3;
-          return acc + (hw * 0.4 + sw * 0.4 + os * 0.2);
+          const ip = (p.attributes.proprioception + p.attributes.scanning + p.attributes.processing) / 3;
+          const oop = (p.attributes.dynamicPower + p.attributes.grit + p.attributes.scanning) / 3;
+          const tr = (p.attributes.bioenergetics + p.attributes.processing + p.attributes.regulation + p.attributes.stewardship) / 4;
+          return acc + (ip * 0.35 + oop * 0.35 + tr * 0.30);
         }, 0);
         return total / starters.length;
       };
@@ -261,8 +250,8 @@ function runRoundSimulation() {
       const hMods = getTacticalModifiers(homeTeam.tactics);
       const aMods = getTacticalModifiers(awayTeam.tactics);
 
-      const hPwr = (getTeamPower(hStarters) * 1.06) * hMods.attMod * (1 / aMods.defMod);
-      const aPwr = getTeamPower(aStarters) * aMods.attMod * (1 / hMods.defMod);
+      const hPwr = (getPhasePower(hStarters) * 1.06) * hMods.attMod * (1 / aMods.defMod);
+      const aPwr = getPhasePower(aStarters) * aMods.attMod * (1 / hMods.defMod);
       const hRatio = hPwr / (hPwr + aPwr);
 
       const hxg = Math.max(0.2, (hRatio * 2.8) + (Math.random() * 0.8 - 0.4));
