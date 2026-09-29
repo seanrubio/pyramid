@@ -8,6 +8,51 @@ let tableDiv = 10;
 let squadSort = { key: 'slot', asc: true };
 let tableSort = { key: 'pts', asc: false };
 
+// Standardized Unicode Morale Mapping
+const MORALE_MAP = {
+  'Very High': '🤩',
+  'High': '🙂',
+  'OK': '😐',
+  'Low': '🙁',
+  'Very Low': '🤬'
+};
+
+const CURRENCY_SYMBOLS = {
+  GBP: '£',
+  EUR: '€',
+  USD: '$'
+};
+
+// Global Money Formatter
+function formatMoney(amount, isWage = false) {
+  const cfg = (state && state.config) ? state.config : { currency: 'GBP', wageCadence: 'weekly' };
+  const sym = CURRENCY_SYMBOLS[cfg.currency] || '£';
+
+  let adjusted = amount;
+  if (isWage) {
+    if (cfg.wageCadence === 'monthly') adjusted = Math.round((amount * 52) / 12);
+    else if (cfg.wageCadence === 'yearly') adjusted = Math.round(amount * 52);
+  }
+
+  if (adjusted >= 10000000) {
+    return `${sym}${Math.round(adjusted / 1000000)}M`;
+  }
+  if (adjusted >= 1000000) {
+    return `${sym}${(adjusted / 1000000).toFixed(1)}M`;
+  }
+  if (adjusted >= 1000) {
+    return `${sym}${(adjusted / 1000).toFixed(0)}k`;
+  }
+  return `${sym}${adjusted.toLocaleString()}`;
+}
+
+function getWageSuffix() {
+  const cfg = (state && state.config) ? state.config : { wageCadence: 'weekly' };
+  if (cfg.wageCadence === 'monthly') return '/mo';
+  if (cfg.wageCadence === 'yearly') return '/yr';
+  return '/wk';
+}
+
 async function boot() {
   try {
     const res = await fetch('./data.json');
@@ -17,6 +62,7 @@ async function boot() {
     const saved = localStorage.getItem('apex_wpm_save_v1');
     if (saved) {
       state = JSON.parse(saved);
+      if (!state.config) state.config = { currency: 'GBP', wageCadence: 'weekly' };
       renderLayout();
     } else {
       renderClubCreator();
@@ -43,7 +89,7 @@ function resetGameDatabase() {
 
 function renderClubCreator() {
   document.getElementById('app-root').innerHTML = `
-    <div style="max-width: 450px; margin: 60px auto;" class="panel">
+    <div style="max-width: 460px; margin: 50px auto;" class="panel">
       <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700;">
         NEW CLUB REGISTRATION (DIVISION 10)
       </div>
@@ -62,6 +108,24 @@ function renderClubCreator() {
           <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Stadium Ground Name:</label>
           <input id="create-ground" placeholder="e.g. Waterfront Park" style="width: 100%;">
         </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Currency:</label>
+            <select id="create-currency" style="width: 100%;">
+              <option value="GBP">GBP (£)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="USD">USD ($)</option>
+            </select>
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Wage Cadence:</label>
+            <select id="create-wage-cadence" style="width: 100%;">
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+        </div>
         <button type="submit" class="primary" style="margin-top: 8px; padding: 8px;">CREATE CLUB & ENTER PYRAMID</button>
       </form>
     </div>
@@ -73,6 +137,8 @@ function handleCreateClub(e) {
   const name = document.getElementById('create-name').value.trim();
   const country = document.getElementById('create-country').value;
   const stadium = document.getElementById('create-ground').value.trim() || `${name} Stadium`;
+  const currency = document.getElementById('create-currency').value;
+  const wageCadence = document.getElementById('create-wage-cadence').value;
 
   const userTeamId = 'club_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const teams = {};
@@ -112,6 +178,7 @@ function handleCreateClub(e) {
 
   state = {
     season: 1, round: 1, maxRounds: 38,
+    config: { currency, wageCadence },
     userTeamId, teams, tables,
     fixtures: generateFixtures(teams)
   };
@@ -133,7 +200,7 @@ function renderLayout() {
           <span style="color: var(--text-muted);">ROUND ${state.round}/${state.maxRounds}</span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span>BALANCE: <strong style="color: var(--green);">£${(userTeam.budget / 1000).toFixed(0)}k</strong></span>
+          <span>BALANCE: <strong style="color: var(--green);">${formatMoney(userTeam.budget)}</strong></span>
           <button onclick="handleSimRound()" class="primary">PLAY ROUND</button>
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
@@ -171,17 +238,30 @@ function renderCurrentView() {
   else if (activeTab === 'transfers') renderTransfersView(ws);
 }
 
-// --- SQUAD DIRECTORY (SINGLE TABLE VIEW) ---
+// Helper to determine natural pitch order ranking
+function getSlotRank(slot) {
+  if (slot.startsWith('S')) {
+    const num = parseInt(slot.replace('S', ''), 10);
+    return num; // S1 through S11
+  }
+  if (slot.startsWith('B')) {
+    const num = parseInt(slot.replace('B', ''), 10);
+    return 100 + num; // B1 through B9
+  }
+  return 999; // RES
+}
+
+// --- SQUAD DIRECTORY ---
 function renderSquadView(container) {
   const team = state.teams[state.userTeamId];
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   
-  // Cleaned Slot Labels: Exact Position Name, "BN", and "RES"
   const starterOpts = formRoles.map((role, i) => ({ val: `S${i + 1}`, label: role }));
   const benchOpts = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: 'BN' }));
   const allOpts = [{ val: 'RES', label: 'RES' }, ...starterOpts, ...benchOpts];
 
   const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
+  const wageSuffix = getWageSuffix();
 
   container.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -196,7 +276,7 @@ function renderSquadView(container) {
       <table>
         <thead>
           <tr>
-            <th>Slot</th>
+            <th onclick="sortSquad('slot')" style="cursor: pointer;">Slot</th>
             <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
             <th>Pos</th>
             <th onclick="sortSquad('technique')" style="cursor: pointer; text-align: center;">TEC</th>
@@ -204,7 +284,7 @@ function renderSquadView(container) {
             <th onclick="sortSquad('bodyControl')" style="cursor: pointer; text-align: center;">BOD</th>
             <th onclick="sortSquad('athleticism')" style="cursor: pointer; text-align: center;">ATH</th>
             <th onclick="sortSquad('character')" style="cursor: pointer; text-align: center;">CHA</th>
-            <th>Morale</th>
+            <th style="text-align: center;">Morale</th>
             <th style="text-align: center;">Form</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
             <th style="text-align: right;">Wage</th>
@@ -213,6 +293,7 @@ function renderSquadView(container) {
         <tbody>
           ${team.squad.map(p => {
             const form = p.ratingsHistory.length ? (p.ratingsHistory.reduce((a, b) => a + b, 0) / p.ratingsHistory.length).toFixed(1) : '-';
+            const emoji = MORALE_MAP[p.morale] || '😐';
             return `
               <tr>
                 <td>
@@ -227,10 +308,10 @@ function renderSquadView(container) {
                 <td style="text-align: center;">${p.bodyControl}</td>
                 <td style="text-align: center;">${p.athleticism}</td>
                 <td style="text-align: center;">${p.character}</td>
-                <td>${p.morale}</td>
+                <td style="text-align: center; font-size: 13px;" title="${p.morale}">${emoji}</td>
                 <td style="text-align: center; color: var(--accent);">${form}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
-                <td style="text-align: right;">£${p.wage}</td>
+                <td style="text-align: right;">${formatMoney(p.wage, true)}${wageSuffix}</td>
               </tr>
             `;
           }).join('')}
@@ -263,19 +344,31 @@ function autoPickLineup() {
 }
 
 function sortSquad(key) {
-  if (squadSort.key === key) squadSort.asc = !squadSort.asc;
-  else { squadSort.key = key; squadSort.asc = true; }
+  if (squadSort.key === key) {
+    squadSort.asc = !squadSort.asc;
+  } else {
+    squadSort.key = key;
+    squadSort.asc = true;
+  }
+
   const team = state.teams[state.userTeamId];
   team.squad.sort((a, b) => {
+    if (squadSort.key === 'slot') {
+      const rankA = getSlotRank(a.slot);
+      const rankB = getSlotRank(b.slot);
+      return squadSort.asc ? rankA - rankB : rankB - rankA;
+    }
+
     let valA = a[squadSort.key];
     let valB = b[squadSort.key];
     if (typeof valA === 'string') return squadSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
     return squadSort.asc ? (valA || 0) - (valB || 0) : (valB || 0) - (valA || 0);
   });
+
   renderSquadView(document.getElementById('view-workspace'));
 }
 
-// --- TACTICS (PLAIN CONTROLS) ---
+// --- TACTICS VIEW ---
 function renderTacticsView(container) {
   const team = state.teams[state.userTeamId];
 
@@ -322,7 +415,7 @@ function setTactics(k, v) {
   renderTacticsView(document.getElementById('view-workspace'));
 }
 
-// --- LEAGUE TABLE ---
+// --- LEAGUE TABLE (WITH GF & GA) ---
 function renderTableView(container) {
   const rows = [...state.tables[tableDiv]].sort((a, b) => b.pts - a.pts || b.gd - a.gd);
 
@@ -343,6 +436,8 @@ function renderTableView(container) {
             <th style="text-align: center;">W</th>
             <th style="text-align: center;">D</th>
             <th style="text-align: center;">L</th>
+            <th style="text-align: center;">GF</th>
+            <th style="text-align: center;">GA</th>
             <th style="text-align: center;">GD</th>
             <th style="text-align: center;">xG</th>
             <th style="text-align: center;">xGA</th>
@@ -358,6 +453,8 @@ function renderTableView(container) {
               <td style="text-align: center;">${r.w}</td>
               <td style="text-align: center;">${r.d}</td>
               <td style="text-align: center;">${r.l}</td>
+              <td style="text-align: center;">${r.gf}</td>
+              <td style="text-align: center;">${r.ga}</td>
               <td style="text-align: center;">${r.gd}</td>
               <td style="text-align: center; color: var(--text-muted);">${r.xg.toFixed(1)}</td>
               <td style="text-align: center; color: var(--text-muted);">${r.xga.toFixed(1)}</td>
@@ -375,7 +472,7 @@ function setTableDiv(d) {
   renderTableView(document.getElementById('view-workspace'));
 }
 
-// --- TRANSFERS ---
+// --- TRANSFERS VIEW (PROPER M / K VALUES) ---
 function renderTransfersView(container) {
   const all = [];
   Object.values(state.teams).forEach(t => {
@@ -412,7 +509,7 @@ function renderTransfersView(container) {
               <td style="text-align: center;">${p.technique}</td>
               <td style="text-align: center;">${p.decisionMaking}</td>
               <td style="text-align: center;">${p.athleticism}</td>
-              <td style="text-align: right; color: var(--green);">£${(p.val / 1000).toFixed(0)}k</td>
+              <td style="text-align: right; color: var(--green);">${formatMoney(p.val)}</td>
               <td style="text-align: center;">
                 <button onclick="signTarget('${p.id}', '${p.clubId}')" class="primary" style="padding: 2px 8px;">SIGN</button>
               </td>
