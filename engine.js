@@ -50,7 +50,10 @@ function generatePlayer(isGK, div, natCode = null) {
   const tierMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
   const attributes = {};
   const traits = [];
-  const thresholdDelta = 1.5 * DB.tierConfig.archetypeSigma;
+
+  // Asymmetric thresholds matching the survival floor (+1.75 peak / -1.25 floor)
+  const assetCutoff = 1.40 * DB.tierConfig.archetypeSigma;
+  const liabilityCutoff = 1.15 * DB.tierConfig.archetypeSigma;
 
   // 8 MECE Pillars
   for (const [pillar, weight] of Object.entries(archetype.weights)) {
@@ -58,9 +61,9 @@ function generatePlayer(isGK, div, natCode = null) {
     const score = Math.max(1, Math.min(99, Math.round(rawVal)));
     attributes[pillar] = score;
 
-    if (score >= tierMean + thresholdDelta) {
+    if (score >= tierMean + assetCutoff) {
       traits.push(`[+${DB.traits[pillar].asset}]`);
-    } else if (score <= tierMean - thresholdDelta) {
+    } else if (score <= tierMean - liabilityCutoff) {
       traits.push(`[-${DB.traits[pillar].liability}]`);
     }
   }
@@ -71,8 +74,8 @@ function generatePlayer(isGK, div, natCode = null) {
   const bmi = +(randomGaussian(baseMorph.bmiMean + archetype.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
   const weightKg = Math.round(bmi * Math.pow(heightCm / 100, 2));
 
-  // Phase Glyphs: IP / OOP / TR
-  const getGlyph = (val) => (val >= tierMean + 4 ? "+" : val <= tierMean - 4 ? "-" : "✓");
+  // Phase Glyphs: IP / OOP / TR (calibrated for 3-4 pillar averages)
+  const getGlyph = (val) => (val >= tierMean + 1.8 ? "+" : val <= tierMean - 1.8 ? "-" : "✓");
   const ipAvg = (attributes.proprioception + attributes.scanning + attributes.processing) / 3;
   const oopAvg = (attributes.dynamicPower + attributes.grit + attributes.scanning) / 3;
   const trAvg = (attributes.bioenergetics + attributes.processing + attributes.regulation + attributes.stewardship) / 4;
