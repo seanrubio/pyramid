@@ -54,6 +54,7 @@ async function boot() {
       state = JSON.parse(saved);
       if (!state.config) state.config = { currency: 'GBP', wageCadence: 'weekly', units: 'metric' };
       if (!state.config.units) state.config.units = 'metric';
+      tableDiv = state.teams[state.userTeamId].div;
       renderLayout();
     } else {
       renderClubCreator();
@@ -188,6 +189,8 @@ function handleCreateClub(e) {
     }));
   }
 
+  tableDiv = 10;
+
   state = {
     season: 1, round: 1, maxRounds: 38,
     config: { currency, wageCadence, units },
@@ -201,6 +204,7 @@ function handleCreateClub(e) {
 
 function renderLayout() {
   const userTeam = state.teams[state.userTeamId];
+  const isSeasonOver = state.round > state.maxRounds;
 
   document.getElementById('app-root').innerHTML = `
     <!-- Top Global Bar -->
@@ -209,11 +213,15 @@ function renderLayout() {
         <div style="display: flex; align-items: center; gap: 12px;">
           <strong style="color: #fff; font-size: 13px;">${userTeam.name}</strong>
           <span style="color: var(--accent);">DIV ${userTeam.div}</span>
-          <span style="color: var(--text-muted);">ROUND ${state.round}/${state.maxRounds}</span>
+          <span style="color: var(--text-muted);">S${state.season} • ROUND ${Math.min(state.round, state.maxRounds)}/${state.maxRounds}</span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
           <span>BALANCE: <strong style="color: var(--green);">${formatMoney(userTeam.budget)}</strong></span>
-          <button onclick="handleSimRound()" class="primary">PLAY ROUND</button>
+          ${isSeasonOver ? `
+            <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
+          ` : `
+            <button onclick="handleSimRound()" class="primary">PLAY ROUND</button>
+          `}
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
       </div>
@@ -240,6 +248,13 @@ function switchTab(t) {
 function handleSimRound() {
   const success = runRoundSimulation();
   if (success) renderLayout();
+}
+
+function handleStartNewSeason() {
+  if (confirm(`Conclude Season ${state.season} and begin Season ${state.season + 1}? All table records will reset for a fresh fixture calendar.`)) {
+    resetSeasonClean();
+    renderLayout();
+  }
 }
 
 function renderCurrentView() {
@@ -475,7 +490,6 @@ function sortSquad(key) {
         return squadSort.asc ? valA - valB : valB - valA;
       }
       
-      // Tie-breaker: Qualitative alphabetical by last name
       return getLastName(a.name).localeCompare(getLastName(b.name));
     }
 
@@ -552,7 +566,6 @@ function renderFixturesView(container) {
   const userTeam = state.teams[state.userTeamId];
   const divFixtures = state.fixtures[userTeam.div] || [];
 
-  // Extract the user club's scheduled match from every round
   const clubSchedule = [];
   divFixtures.forEach((roundMatches, idx) => {
     const match = roundMatches.find(m => m.home === state.userTeamId || m.away === state.userTeamId);
@@ -575,7 +588,7 @@ function renderFixturesView(container) {
       <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
         <div>
           <strong style="color: #fff; font-size: 14px;">${userTeam.name.toUpperCase()} FIXTURES & RESULTS</strong>
-          <span style="color: var(--text-muted); font-size: 12px; margin-left: 8px;">DIVISION ${userTeam.div}</span>
+          <span style="color: var(--text-muted); font-size: 12px; margin-left: 8px;">DIVISION ${userTeam.div} • SEASON ${state.season}</span>
         </div>
         <div style="font-size: 11px; color: var(--text-muted);">
           COMPLETED: <strong style="color: var(--text);">${playedCount}</strong> / ${clubSchedule.length}
@@ -590,23 +603,23 @@ function renderFixturesView(container) {
               <th style="width: 50px; text-align: center;">Rnd</th>
               <th style="width: 55px; text-align: center;">Venue</th>
               <th>Opponent</th>
-              <th style="width: 80px; text-align: center;">Result</th>
-              <th style="width: 100px; text-align: center;">xG</th>
+              <th style="width: 95px; text-align: center;">Result</th>
+              <th style="width: 110px; text-align: center;">xG</th>
               <th style="width: 60px; text-align: center;">Outcome</th>
             </tr>
           </thead>
           <tbody>
             ${clubSchedule.map(item => {
               const { round, match, isHome, opponent } = item;
-              const isCurrent = (round === state.round);
+              const isCurrent = (round === state.round && !match.played);
 
               let venueBadge = isHome 
                 ? '<span style="color: var(--accent); font-weight: 700;">H</span>' 
                 : '<span style="color: var(--text-muted);">A</span>';
 
-              let scoreDisplay = '-';
-              let xgDisplay = '-';
-              let outcomeBadge = '-';
+              let scoreDisplay = '<span style="color: var(--text-muted);">-</span>';
+              let xgDisplay = '<span style="color: var(--text-muted);">-</span>';
+              let outcomeBadge = '<span style="color: var(--text-muted);">-</span>';
 
               if (match.played) {
                 const teamGoals = isHome ? match.hg : match.ag;
@@ -614,8 +627,19 @@ function renderFixturesView(container) {
                 const teamXg = isHome ? match.hxg : match.axg;
                 const oppXg = isHome ? match.axg : match.hxg;
 
-                scoreDisplay = `<strong style="color: #fff; font-size: 13px;">${teamGoals} -${oppGoals}</strong>`;
-                xgDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${teamXg.toFixed(1)} -${oppXg.toFixed(1)}</span>`;
+                // Evenly spaced score with clean contrast
+                scoreDisplay = `
+                  <span style="font-family: var(--font-mono, monospace); font-weight: 700; font-size: 13px; letter-spacing: 0.05em; color: #fff;">
+                    ${teamGoals}&nbsp;–&nbsp;${oppGoals}
+                  </span>
+                `;
+
+                // Symmetric, monospaced xG comparison
+                xgDisplay = `
+                  <span style="font-family: var(--font-mono, monospace); font-size: 11px; color: var(--text-muted); letter-spacing: 0.02em;">
+                    ${teamXg.toFixed(1)}&nbsp;–&nbsp;${oppXg.toFixed(1)}
+                  </span>
+                `;
 
                 if (teamGoals > oppGoals) {
                   outcomeBadge = '<span class="badge badge-asset" style="padding: 1px 6px;">W</span>';
@@ -635,7 +659,7 @@ function renderFixturesView(container) {
                   <td style="font-weight: 600; color: var(--text);">
                     ${opponent ? opponent.name : 'Unknown Club'}
                   </td>
-                  <td style="text-align: center; font-family: monospace;">${scoreDisplay}</td>
+                  <td style="text-align: center;">${scoreDisplay}</td>
                   <td style="text-align: center;">${xgDisplay}</td>
                   <td style="text-align: center;">${outcomeBadge}</td>
                 </tr>
@@ -651,7 +675,14 @@ function renderFixturesView(container) {
 
 // --- LEAGUE TABLE ---
 function renderTableView(container) {
-  const rows = [...state.tables[tableDiv]].sort((a, b) => b.pts - a.pts || b.gd - a.gd);
+  // Tiebreaker sort: Points -> GD -> GF -> xGD -> Name
+  const rows = [...state.tables[tableDiv]].sort((a, b) => 
+    b.pts - a.pts || 
+    b.gd - a.gd || 
+    b.gf - a.gf || 
+    b.xgd - a.xgd || 
+    a.name.localeCompare(b.name)
+  );
 
   container.innerHTML = `
     <div style="display: flex; gap: 4px; margin-bottom: 8px; overflow-x: auto;">
