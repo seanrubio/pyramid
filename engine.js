@@ -1,4 +1,4 @@
-// --- SIMULATION ENGINE (PHASE TRIAD & POSITIONLESS REFACTOR) ---
+// --- SIMULATION ENGINE (PHASE TRIAD & TACTICAL BLUEPRINT REFACTOR) ---
 
 const FORMATIONS = {
   '4-4-2 Flat': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'],
@@ -51,7 +51,7 @@ function generatePlayer(isGK, div, natCode = null) {
   const attributes = {};
   const traits = [];
 
-  // Asymmetric thresholds matching the survival floor (+1.75 peak / -1.25 floor)
+  // Asymmetric thresholds matching the survival floor (+1.65 peak / -1.25 floor)
   const assetCutoff = 1.65 * DB.tierConfig.archetypeSigma;
   const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
 
@@ -105,7 +105,6 @@ function generatePlayer(isGK, div, natCode = null) {
     (attributes.grit           * 0.075) +
     (attributes.stewardship    * 0.075);
 
- // Glyphs trigger symmetrically around the true tier mean (±1.4 points)
   const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 0.7 ? "-" : "✓");
   const phaseGlyphs = `${getGlyph(ipScore)} / ${getGlyph(oopScore)} / ${getGlyph(trScore)}`;
 
@@ -150,41 +149,156 @@ function createFullSquad(div, primaryCountryCode) {
   return squad;
 }
 
-// Auto-assign based on tactical phase fit rather than rigid position strings
+// Calculate dynamic tactical phase weights by blending the blueprint with active tactical sliders
+function resolveTacticalPhaseWeights(tactics = {}) {
+  const bp = (tactics.blueprint && DB.tacticalBlueprints && DB.tacticalBlueprints[tactics.blueprint])
+    ? DB.tacticalBlueprints[tactics.blueprint].phaseWeights
+    : { ip: 0.38, oop: 0.38, tr: 0.24 };
+
+  let ip = bp.ip;
+  let oop = bp.oop;
+  let tr = bp.tr;
+
+  // 1. Mentality adjustments
+  if (tactics.mentality === 'park the bus') { ip -= 0.20; oop += 0.16; tr += 0.04; }
+  else if (tactics.mentality === 'defensive') { ip -= 0.10; oop += 0.08; tr += 0.02; }
+  else if (tactics.mentality === 'attacking') { ip += 0.10; oop -= 0.12; tr += 0.02; }
+  else if (tactics.mentality === 'overload')  { ip += 0.20; oop -= 0.24; tr += 0.04; }
+
+  // 2. Pressing adjustments
+  if (tactics.press === 'low block')        { ip -= 0.04; oop += 0.08; tr -= 0.04; }
+  else if (tactics.press === 'high press')   { ip -= 0.04; oop += 0.04; tr += 0.00; }
+  else if (tactics.press === 'gegenpress')   { ip -= 0.12; oop += 0.04; tr += 0.08; }
+
+  // 3. Build-up distribution
+  if (tactics.buildGk === 'short') { ip += 0.06; tr -= 0.06; }
+  else if (tactics.buildGk === 'long') { ip -= 0.08; tr += 0.06; oop += 0.02; }
+
+  // 4. Floor clamp & normalize back to 1.00
+  ip = Math.max(0.08, ip);
+  oop = Math.max(0.08, oop);
+  tr = Math.max(0.08, tr);
+  const sum = ip + oop + tr;
+
+  return {
+    ip: ip / sum,
+    oop: oop / sum,
+    tr: tr / sum
+  };
+}
+
+// Calculate individual player phase power
+function getPlayerPhaseScores(p) {
+  const a = p.attributes;
+  const ip = (a.proprioception * 0.20) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.075) + (a.scanning * 0.20) + (a.processing * 0.15) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
+  const oop = (a.proprioception * 0.075) + (a.dynamicPower * 0.20) + (a.bioenergetics * 0.15) + (a.scanning * 0.15) + (a.processing * 0.075) + (a.regulation * 0.075) + (a.grit * 0.15) + (a.stewardship * 0.125);
+  const tr = (a.proprioception * 0.15) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.20) + (a.scanning * 0.075) + (a.processing * 0.20) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
+  return { ip, oop, tr };
+}
+
+// Evaluate slot suitability based on position zone, blueprint affinities, and morphology
+function evaluateSlotFit(player, role, blueprintKey) {
+  const scores = getPlayerPhaseScores(player);
+  const a = player.attributes;
+  const bp = (blueprintKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[blueprintKey] : null;
+
+  let baseFit = 0;
+
+  // 1. Positional Role Phase & Attribute Demands
+  if (role === 'CB') {
+    baseFit = (scores.oop * 0.65) + (scores.tr * 0.20) + (scores.ip * 0.15);
+    if (player.morphology.heightCm >= 188) baseFit += 4.0;
+    else if (player.morphology.heightCm < 182) baseFit -= 4.0;
+  } else if (role === 'LB' || role === 'RB') {
+    baseFit = (scores.tr * 0.45) + (scores.oop * 0.35) + (scores.ip * 0.20);
+    baseFit += (a.bioenergetics * 0.05);
+  } else if (role === 'DM') {
+    baseFit = (scores.oop * 0.50) + (scores.tr * 0.30) + (scores.ip * 0.20);
+    baseFit += (a.grit * 0.05) + (a.stewardship * 0.05);
+  } else if (role === 'CM') {
+    baseFit = (scores.ip * 0.35) + (scores.tr * 0.35) + (scores.oop * 0.30);
+  } else if (role === 'AM') {
+    baseFit = (scores.ip * 0.60) + (scores.tr * 0.25) + (scores.oop * 0.15);
+    baseFit += (a.scanning * 0.05) + (a.processing * 0.05);
+  } else if (role === 'LM' || role === 'RM' || role === 'LW' || role === 'RW') {
+    baseFit = (scores.tr * 0.45) + (scores.ip * 0.40) + (scores.oop * 0.15);
+    baseFit += (a.proprioception * 0.05) + (a.dynamicPower * 0.05);
+  } else if (role === 'ST') {
+    baseFit = (scores.ip * 0.50) + (scores.tr * 0.35) + (scores.oop * 0.15);
+    if (player.archetypeKey === 'target' && player.morphology.heightCm >= 190) baseFit += 5.0;
+  }
+
+  // 2. Blueprint Alignment Modifiers
+  if (bp) {
+    if (bp.favoredArchetypes && bp.favoredArchetypes.includes(player.archetypeKey)) baseFit += 6.0;
+    if (bp.unfavoredArchetypes && bp.unfavoredArchetypes.includes(player.archetypeKey)) baseFit -= 6.0;
+
+    if (bp.keyPillars) {
+      bp.keyPillars.forEach(pillar => {
+        if (a[pillar] >= 75) baseFit += 1.5;
+        else if (a[pillar] <= 60) baseFit -= 1.5;
+      });
+    }
+  }
+
+  return baseFit;
+}
+
+// Auto-assign based on tactical blueprint fit and slot demands
 function autoAssignLineup(team) {
   team.squad.forEach(p => p.slot = 'RES');
-  
-  // Assign Goalkeeper (Slot S1)
+  const bpKey = team.tactics ? team.tactics.blueprint : null;
+  const bp = (bpKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[bpKey] : null;
+
+  // 1. Assign Goalkeeper (Slot S1)
   const availableKeepers = team.squad.filter(p => p.isGK);
-  availableKeepers.sort((a, b) => {
-    const scoreA = a.attributes.dynamicPower + a.attributes.processing;
-    const scoreB = b.attributes.dynamicPower + b.attributes.processing;
-    return scoreB - scoreA;
-  });
   if (availableKeepers.length > 0) {
+    availableKeepers.sort((a, b) => {
+      let scoreA = (a.attributes.dynamicPower * 0.4) + (a.attributes.processing * 0.4) + (a.attributes.scanning * 0.2);
+      let scoreB = (b.attributes.dynamicPower * 0.4) + (b.attributes.processing * 0.4) + (b.attributes.scanning * 0.2);
+      if (bp && bp.favoredGk) {
+        if (a.archetypeKey === bp.favoredGk) scoreA += 8.0;
+        if (b.archetypeKey === bp.favoredGk) scoreB += 8.0;
+      }
+      return scoreB - scoreA;
+    });
     availableKeepers[0].slot = 'S1';
   }
 
-  // Assign Outfield Starters (S2 through S11)
-  const availableOutfield = team.squad.filter(p => !p.isGK);
-  availableOutfield.sort((a, b) => {
-    const scoreA = Object.values(a.attributes).reduce((acc, v) => acc + v, 0);
-    const scoreB = Object.values(b.attributes).reduce((acc, v) => acc + v, 0);
+  // 2. Assign Outfield Starters (S2 through S11)
+  const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
+  let availableOutfield = team.squad.filter(p => !p.isGK);
+
+  for (let i = 1; i < 11; i++) {
+    const role = formRoles[i];
+    if (availableOutfield.length === 0) break;
+
+    availableOutfield.sort((a, b) => {
+      const fitA = evaluateSlotFit(a, role, bpKey);
+      const fitB = evaluateSlotFit(b, role, bpKey);
+      return fitB - fitA;
+    });
+
+    const chosen = availableOutfield.shift();
+    chosen.slot = `S${i + 1}`;
+  }
+
+  // 3. Assign Bench (B1 to B9) - Backup GK first, then overall versatile depth
+  const remainingGKs = team.squad.filter(p => p.isGK && p.slot === 'RES');
+  let benchIndex = 1;
+  if (remainingGKs.length > 0) {
+    remainingGKs[0].slot = `B${benchIndex++}`;
+  }
+
+  const remainingOutfield = team.squad.filter(p => !p.isGK && p.slot === 'RES');
+  remainingOutfield.sort((a, b) => {
+    const scoreA = (a.attributes.bioenergetics * 0.4) + (a.attributes.grit * 0.3) + (a.attributes.stewardship * 0.3);
+    const scoreB = (b.attributes.bioenergetics * 0.4) + (b.attributes.grit * 0.3) + (b.attributes.stewardship * 0.3);
     return scoreB - scoreA;
   });
 
-  for (let i = 2; i <= 11; i++) {
-    if (availableOutfield.length > 0) {
-      availableOutfield.shift().slot = `S${i}`;
-    }
-  }
-
-  // Assign Bench (B1 to B9)
-  const remaining = team.squad.filter(p => p.slot === 'RES');
-  for (let b = 1; b <= 9; b++) {
-    if (remaining.length > 0) {
-      remaining.shift().slot = `B${b}`;
-    }
+  while (benchIndex <= 9 && remainingOutfield.length > 0) {
+    remainingOutfield.shift().slot = `B${benchIndex++}`;
   }
 }
 
@@ -233,21 +347,6 @@ function buildRoundRobin(teamIds) {
   return rounds;
 }
 
-function getTacticalModifiers(tactics) {
-  let attMod = 1.0;
-  let defMod = 1.0;
-
-  if (tactics.mentality === 'park the bus') { attMod *= 0.70; defMod *= 1.30; }
-  else if (tactics.mentality === 'defensive') { attMod *= 0.85; defMod *= 1.15; }
-  else if (tactics.mentality === 'attacking') { attMod *= 1.15; defMod *= 0.88; }
-  else if (tactics.mentality === 'overload') { attMod *= 1.30; defMod *= 0.75; }
-
-  if (tactics.press === 'high press' || tactics.press === 'gegenpress') { attMod *= 1.08; defMod *= 0.95; }
-  else if (tactics.press === 'low block') { attMod *= 0.92; defMod *= 1.10; }
-
-  return { attMod, defMod };
-}
-
 function runRoundSimulation() {
   const userTeam = state.teams[state.userTeamId];
   const validation = validateLineup(userTeam);
@@ -267,31 +366,22 @@ function runRoundSimulation() {
       const hStarters = homeTeam.squad.filter(p => p.slot.startsWith('S'));
       const aStarters = awayTeam.squad.filter(p => p.slot.startsWith('S'));
 
-      const getPhasePower = (starters, blueprintKey) => {
+      const getPhasePower = (starters, tactics) => {
         if (starters.length === 0) return 40;
         
-        // Fallback to balanced if not found
-        const bp = (DB.tacticalBlueprints && DB.tacticalBlueprints[blueprintKey]) 
-          ? DB.tacticalBlueprints[blueprintKey].phaseWeights 
-          : { ip: 0.38, oop: 0.38, tr: 0.24 };
+        const weights = resolveTacticalPhaseWeights(tactics);
 
         const total = starters.reduce((acc, p) => {
-          const a = p.attributes;
-          const ip = (a.proprioception * 0.20) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.075) + (a.scanning * 0.20) + (a.processing * 0.15) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
-          const oop = (a.proprioception * 0.075) + (a.dynamicPower * 0.20) + (a.bioenergetics * 0.15) + (a.scanning * 0.15) + (a.processing * 0.075) + (a.regulation * 0.075) + (a.grit * 0.15) + (a.stewardship * 0.125);
-          const tr = (a.proprioception * 0.15) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.20) + (a.scanning * 0.075) + (a.processing * 0.20) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
-          
-          return acc + (ip * bp.ip + oop * bp.oop + tr * bp.tr);
+          const scores = getPlayerPhaseScores(p);
+          return acc + (scores.ip * weights.ip + scores.oop * weights.oop + scores.tr * weights.tr);
         }, 0);
 
         return total / starters.length;
       };
 
-      const hMods = getTacticalModifiers(homeTeam.tactics);
-      const aMods = getTacticalModifiers(awayTeam.tactics);
-
-      const hPwr = (getPhasePower(hStarters) * 1.06) * hMods.attMod * (1 / aMods.defMod);
-      const aPwr = getPhasePower(aStarters) * aMods.attMod * (1 / hMods.defMod);
+      // Match engine calculates composite team output organically from live weighted phases
+      const hPwr = getPhasePower(hStarters, homeTeam.tactics) * 1.06; // 6% Home advantage
+      const aPwr = getPhasePower(aStarters, awayTeam.tactics);
       const hRatio = hPwr / (hPwr + aPwr);
 
       const hxg = Math.max(0.2, (hRatio * 2.8) + (Math.random() * 0.8 - 0.4));
