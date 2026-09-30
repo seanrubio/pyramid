@@ -1,6 +1,6 @@
 import { BLUEPRINT_PRESETS } from './constants.js';
 import { createFullSquad, autoAssignLineup, generateFixtures, runRoundSimulation, resetSeasonClean } from './engine.js';
-import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup } from './ui/squadView.js';
+import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadViewMode } from './ui/squadView.js';
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
 import { renderMatchView, changeMatchRound, resetToCurrentMatchRound } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
@@ -11,6 +11,7 @@ export const context = {
   DB: null,
   state: null,
   activeTab: 'squad',
+  squadViewMode: 'general',
   tableDiv: 10,
   viewedTeamId: null,
   viewedFixtureRound: null,
@@ -212,6 +213,7 @@ Object.assign(window, {
   resetToCurrentMatchRound: () => resetToCurrentMatchRound(context, renderLayout),
   setStatsMetric: (m) => setStatsMetric(m, context, renderLayout),
   setStatsDiv: (d) => setStatsDiv(d, context, renderLayout)
+  setSquadViewMode: (mode) => setSquadViewMode(mode, context, renderLayout),
 });
 
 async function boot() {
