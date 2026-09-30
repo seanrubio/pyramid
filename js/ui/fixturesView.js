@@ -40,18 +40,24 @@ export function renderFixturesView(container, ctx) {
             ${clubSchedule.map(item => {
               const { round, match, isHome, opponent } = item;
               const isCurrent = (round === ctx.state.round && !match.played);
-              let scoreDisplay = '<span style="color: var(--text-muted);">-</span>';
-              let xgDisplay = '<span style="color: var(--text-muted);">-</span>';
-              let outcomeBadge = '<span style="color: var(--text-muted);">-</span>';
+              let scoreDisplay = '<span style="color: var(--text-muted);">—</span>';
+              let xgDisplay = '<span style="color: var(--text-muted);">—</span>';
+              let outcomeBadge = '<span style="color: var(--text-muted);">—</span>';
 
               if (match.played) {
                 const teamGoals = isHome ? match.hg : match.ag;
                 const oppGoals = isHome ? match.ag : match.hg;
-                scoreDisplay = `<span style="font-family: monospace; font-weight: 700; color: #fff;">${teamGoals}&nbsp;–&nbsp;${oppGoals}</span>`;
+                scoreDisplay = `
+                  <button onclick="openMatchReport('${match.home}',${round})" 
+                          title="View Match Report"
+                          style="padding: 2px 8px; font-family: monospace; font-size: 11px; font-weight: 700; background: rgba(88, 166, 255, 0.1); border: 1px solid var(--border); color: #fff; cursor: pointer; border-radius: 3px;">
+                    ${teamGoals}&nbsp;–&nbsp;${oppGoals}
+                  </button>
+                `;
                 xgDisplay = `<span style="font-family: monospace; font-size: 11px; color: var(--text-muted);">${(isHome ? match.hxg : match.axg).toFixed(1)}&nbsp;–&nbsp;${(isHome ? match.axg : match.hxg).toFixed(1)}</span>`;
                 outcomeBadge = teamGoals > oppGoals ? '<span class="badge badge-asset">W</span>' : teamGoals === oppGoals ? '<span style="color: var(--amber); font-weight: 700;">D</span>' : '<span class="badge badge-liability">L</span>';
               } else if (isCurrent) {
-                scoreDisplay = '<span style="color: var(--accent); font-weight: 700;">NEXT UP</span>';
+                scoreDisplay = '<span style="color: var(--accent); font-weight: 700; font-size: 10px;">NEXT UP</span>';
               }
 
               return `
@@ -59,7 +65,7 @@ export function renderFixturesView(container, ctx) {
                   <td style="text-align: center; color: var(--text-muted);">${round}</td>
                   <td style="text-align: center;">${isHome ? '<strong style="color: var(--accent);">H</strong>' : 'A'}</td>
                   <td>
-                    ${opponent ? `<span onclick="inspectTeam('${opponent.id}', 'squad')" style="cursor: pointer; font-weight: 600; color: var(--accent); text-decoration: underline;">${opponent.name}</span>` : 'Unknown'}
+                    ${opponent ? `<span onclick="inspectTeam('${opponent.id}', 'squad')" style="cursor: pointer; font-weight: 500; color: var(--text, #fff); text-decoration: none;">${opponent.name}</span>` : 'Unknown'}
                   </td>
                   <td style="text-align: center;">${scoreDisplay}</td>
                   <td style="text-align: center;">${xgDisplay}</td>
