@@ -210,7 +210,7 @@ async function boot() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     context.DB = await res.json();
 
-    const saved = localStorage.getItem('apex_wpm_save_v1');
+    const saved = localStorage.getItem('apex_wpm_save_dev');
     if (saved) {
       context.state = JSON.parse(saved);
       if (!context.state.config) context.state.config = { units: 'imperial' };
