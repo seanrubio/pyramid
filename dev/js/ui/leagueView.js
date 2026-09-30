@@ -17,7 +17,6 @@ export function renderLeagueView(container, ctx) {
     return `<button onclick="setLeagueDiv(${d})" style="${activeStyle}">DIV ${d}</button>`;
   }).join('');
 
-  // Collect all players active in this division
   const divTeams = Object.values(ctx.state.teams).filter(t => t.div === div);
   const allDivPlayers = [];
   divTeams.forEach(t => {
@@ -26,7 +25,6 @@ export function renderLeagueView(container, ctx) {
     });
   });
 
-  // Shorten names: "Nicolas Reyes" -> "N. Reyes"
   const formatShortName = (fullName) => {
     if (!fullName) return '';
     const parts = fullName.trim().split(' ');
@@ -34,14 +32,11 @@ export function renderLeagueView(container, ctx) {
     return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
   };
 
-  // Determine Active Leaderboard Category
-  let leaderTitle = 'GOLDEN BOOT';
   let leaderList = [];
   let primaryGetter = (p) => p.stats?.goals || 0;
   let subGetter = (p) => `${(p.stats?.xg || 0).toFixed(1)} xG`;
 
   if (ctx.leagueLeaderTab === 'assist') {
-    leaderTitle = 'ASSIST KING';
     leaderList = [...allDivPlayers]
       .filter(x => ((x.player.stats?.assists || 0) + (x.player.stats?.xa || 0)) > 0)
       .sort((a, b) => 
@@ -53,7 +48,6 @@ export function renderLeagueView(container, ctx) {
     subGetter = (p) => `${(p.stats?.xa || 0).toFixed(1)} xA`;
 
   } else if (ctx.leagueLeaderTab === 'glove') {
-    leaderTitle = 'GOLDEN GLOVE';
     leaderList = [...allDivPlayers]
       .filter(x => x.player.isGK && (x.player.stats?.apps || 0) > 0)
       .sort((a, b) => 
@@ -70,7 +64,6 @@ export function renderLeagueView(container, ctx) {
     };
 
   } else {
-    // Golden Boot (Default)
     leaderList = [...allDivPlayers]
       .filter(x => (x.player.stats?.goals || 0) > 0)
       .sort((a, b) => 
@@ -182,16 +175,20 @@ export function renderLeagueView(container, ctx) {
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 3px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid var(--border);">
         <div style="flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px;">
-          <span onclick="inspectTeam('${m.home}', 'squad')" style="cursor: pointer;">${homeName}</span>
+          <span onclick="inspectTeam('${m.home}', 'squad')" style="cursor: pointer; font-size: 11px;">${homeName}</span>
         </div>
-        <div style="min-width: 68px; text-align: center; display: flex; flex-direction: column;">
+        <div style="min-width: 68px; text-align: center; display: flex; flex-direction: column; align-items: center;">
           ${m.played ? `
-            <span style="font-family: monospace; font-weight: 700; color: #fff; font-size: 11px;">${m.hg}–${m.ag}</span>
-            <span style="font-family: monospace; font-size: 9px; color: var(--text-muted);">${m.hxg.toFixed(1)}–${m.axg.toFixed(1)}</span>
+            <button onclick="openMatchReport('${m.home}',${activeRound})" 
+                    title="View Match Report"
+                    style="padding: 1px 6px; font-family: monospace; font-size: 11px; font-weight: 700; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: #fff; cursor: pointer; border-radius: 3px;">
+              ${m.hg}–${m.ag}
+            </button>
+            <span style="font-family: monospace; font-size: 9px; color: var(--text-muted); margin-top: 2px;">${m.hxg.toFixed(1)}–${m.axg.toFixed(1)}</span>
           ` : `<span style="font-family: monospace; font-size: 10px; color: var(--text-muted);">vs</span>`}
         </div>
         <div style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 6px;">
-          <span onclick="inspectTeam('${m.away}', 'squad')" style="cursor: pointer;">${awayName}</span>
+          <span onclick="inspectTeam('${m.away}', 'squad')" style="cursor: pointer; font-size: 11px;">${awayName}</span>
         </div>
       </div>
     `;
@@ -230,7 +227,6 @@ export function renderLeagueView(container, ctx) {
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 12px;">
-        <!-- Division Leaders Pod -->
         <div class="panel" style="padding: 10px 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <strong style="color: #fff; font-size: 12px;">LEADERS</strong>
@@ -251,7 +247,6 @@ export function renderLeagueView(container, ctx) {
           </div>
         </div>
 
-        <!-- Round Fixtures Box -->
         <div class="panel" style="padding: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
             <strong style="color: #fff; font-size: 12px;">ROUND ${activeRound} FIXTURES</strong>
