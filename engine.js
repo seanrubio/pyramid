@@ -349,7 +349,7 @@ function sampleChoice(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// --- engine.js (Replace runRoundSimulation) ---
+// --- SIMULATION ENGINE (BOTTOM-UP POSSESSION ATTRITION ENGINE) ---
 
 function runRoundSimulation() {
   if (state.round > state.maxRounds) {
@@ -380,125 +380,124 @@ function runRoundSimulation() {
       let hGoals = 0;
       let aGoals = 0;
 
-      // 1. MACRO SHOT BUDGET
-      // Real football: 20-26 total shots per match combined
-      const getTempoShots = (t) => {
-        let s = 11.5;
-        if (t.tactics.mentality === 'attacking') s += 1.5;
-        if (t.tactics.mentality === 'overload') s += 3.0;
-        if (t.tactics.mentality === 'defensive') s -= 1.5;
-        if (t.tactics.mentality === 'park the bus') s -= 3.0;
-        if (t.tactics.press === 'gegenpress') s += 1.0;
-        if (t.tactics.press === 'low block') s -= 1.0;
-        return s;
+      // Base transition clock: Real football features ~48 to 54 possessions per team over 90 mins
+      const getTeamPossessions = (team) => {
+        let base = 50;
+        if (team.tactics.mentality === 'attacking') base += 3;
+        if (team.tactics.mentality === 'overload') base += 6;
+        if (team.tactics.mentality === 'defensive') base -= 3;
+        if (team.tactics.mentality === 'park the bus') base -= 6;
+        if (team.tactics.press === 'gegenpress') base += 2;
+        if (team.tactics.press === 'low block') base -= 2;
+        return base;
       };
 
-      // 2. MIDFIELD POWER SHARE (Dictates who gets what share of the shots)
-      const hMid = sampleChoice(hUnits.midfielders);
-      const aMid = sampleChoice(aUnits.midfielders);
+      // Natural possession allocation influenced slightly by home advantage
+      const hPossCount = Math.round(getTeamPossessions(homeTeam) * 1.03);
+      const aPossCount = Math.round(getTeamPossessions(awayTeam));
 
-      const hMidPwr = (hMid.attributes.scanning * 0.4 + hMid.attributes.processing * 0.4 + hMid.attributes.bioenergetics * 0.2) * 1.08;
-      const aMidPwr = (aMid.attributes.scanning * 0.4 + aMid.attributes.processing * 0.4 + aMid.attributes.bioenergetics * 0.2);
-      const homeShare = hMidPwr / (hMidPwr + aMidPwr);
-
-      const totalMatchShots = Math.round(getTempoShots(homeTeam) + getTempoShots(awayTeam));
-      const homeShotCount = Math.round(totalMatchShots * homeShare);
-      const awayShotCount = totalMatchShots - homeShotCount;
-
-      // Helper to resolve an individual shot event for a side
-      const simulateTeamShot = (attTeam, defTeam, attUnits, defUnits, isHome) => {
+      // Resolve a single possession sequence from first principles
+      const resolvePossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
+        // --- PHASE 1: BUILD-UP & PROGRESSION ---
+        // Midfielder / pivot attempts to play through or over the opponent's first defensive wave
         const passer = sampleChoice(attUnits.midfielders);
-        const defender = sampleChoice(defUnits.defenders);
+        const marker = sampleChoice(defUnits.midfielders.concat(defUnits.defenders));
 
-        // Realistic chance distribution across positions
+        const buildStyle = attTeam.tactics.buildMid || 'mixed';
+        const pressStyle = defTeam.tactics.press || 'mid block';
+
+        let attBuildPower = (passer.attributes.scanning * 0.45 + passer.attributes.processing * 0.45 + passer.attributes.proprioception * 0.10);
+        let defPressPower = (marker.attributes.scanning * 0.35 + marker.attributes.dynamicPower * 0.35 + marker.attributes.grit * 0.30);
+
+        if (buildStyle === 'patient possession') {
+          attBuildPower += (passer.attributes.proprioception * 0.15);
+          if (pressStyle === 'gegenpress') defPressPower *= 1.10;
+        } else if (buildStyle === 'direct') {
+          attBuildPower = (passer.attributes.dynamicPower * 0.50 + passer.attributes.processing * 0.35 + passer.attributes.scanning * 0.15);
+          defPressPower = (marker.attributes.scanning * 0.45 + marker.attributes.regulation * 0.35 + marker.attributes.grit * 0.20);
+        }
+
+        // Attrition Check 1: Normal teams advance ~45% - 60% of their possessions past midfield
+        const buildDelta = (attBuildPower - defPressPower) + randomGaussian(0, 14);
+        if (buildDelta < 0) {
+          marker.stats.tackles += 1;
+          return; // Possession broken up in midfield. Turn over, NO SHOT.
+        }
+
+        // --- PHASE 2: PENETRATION & CHANCE CREATION DUEL ---
+        // Ball enters final third: creator attempts to carve out shooting space against the backline
+        const defender = sampleChoice(defUnits.defenders);
+        const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
+
         const pickShooter = () => {
           const roll = Math.random();
-          if (roll < 0.52 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
-          if (roll < 0.78 && attUnits.wideAttackers.length) return sampleChoice(attUnits.wideAttackers);
+          if (roll < 0.55 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
+          if (roll < 0.80 && attUnits.wideAttackers.length) return sampleChoice(attUnits.wideAttackers);
           return sampleChoice(attUnits.midfielders);
         };
 
         const shooter = pickShooter();
         let creator = (passer.id !== shooter.id) ? passer : null;
-        let shotXg = 0.08; // Average baseline shot xG in professional football
+        let duelAdvantage = 0;
 
-        const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
-
-        // 3. MICRO TACTICAL DUELS (Shapes shot quality between 0.03 and 0.42 xG)
         if (creationStyle === 'flank play') {
           const winger = sampleChoice(attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders);
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
           creator = winger;
 
-          const delivery = (winger.attributes.proprioception + winger.attributes.dynamicPower) -
-                           (fullback.attributes.dynamicPower + fullback.attributes.grit);
+          const deliveryEdge = (winger.attributes.proprioception * 0.5 + winger.attributes.dynamicPower * 0.5) -
+                               (fullback.attributes.dynamicPower * 0.5 + fullback.attributes.grit * 0.5);
 
-          const aerial = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.4) -
-                         (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.4);
+          const aerialEdge = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.40 + shooter.attributes.grit * 0.35) -
+                             (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.40 + defender.attributes.grit * 0.35);
 
-          const net = (delivery * 0.5 + aerial * 0.5) + randomGaussian(0, 8);
-
-          if (net > 6) {
-            shotXg = Math.min(0.38, 0.18 + (net * 0.005));
-          } else if (net < -4) {
-            shotXg = 0.04; // Contested / off-balance attempt
-            defender.stats.tackles += 1;
-          } else {
-            shotXg = 0.10;
-          }
+          duelAdvantage = (deliveryEdge * 0.4 + aerialEdge * 0.6) + randomGaussian(0, 12);
 
         } else if (creationStyle === 'balls in behind') {
-          let recoveryBonus = (defTeam.tactics.press === 'low block') ? 10 : 0;
-          const sprint = (shooter.attributes.dynamicPower * 0.6 + shooter.attributes.bioenergetics * 0.4) -
-                         (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5 + recoveryBonus) +
-                         randomGaussian(0, 8);
+          let recoveryBonus = (defTeam.tactics.press === 'low block') ? 14 : 0;
+          const sprintEdge = (shooter.attributes.dynamicPower * 0.60 + shooter.attributes.bioenergetics * 0.40) -
+                             (defender.attributes.dynamicPower * 0.50 + defender.attributes.scanning * 0.50 + recoveryBonus);
 
-          if (sprint > 6) {
-            shotXg = Math.min(0.42, 0.22 + (sprint * 0.006));
-          } else if (sprint < -4) {
-            shotXg = 0.04;
-            defender.stats.tackles += 1;
-          } else {
-            shotXg = 0.11;
-          }
+          duelAdvantage = sprintEdge + randomGaussian(0, 12);
 
         } else if (creationStyle === 'central creator') {
           const playmaker = sampleChoice(attUnits.playmakers.length ? attUnits.playmakers : attUnits.midfielders);
           creator = (playmaker.id !== shooter.id) ? playmaker : null;
 
-          const vision = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) -
-                         (defender.attributes.scanning * 0.6 + defender.attributes.grit * 0.4) +
-                         randomGaussian(0, 8);
+          const visionEdge = (playmaker.attributes.scanning * 0.50 + playmaker.attributes.processing * 0.50) -
+                             (defender.attributes.scanning * 0.60 + defender.attributes.grit * 0.40);
 
-          if (vision > 5) {
-            shotXg = Math.min(0.40, 0.20 + (vision * 0.005));
-          } else if (vision < -4) {
-            shotXg = 0.04;
-            defender.stats.tackles += 1;
-          } else {
-            shotXg = 0.10;
-          }
+          duelAdvantage = visionEdge + randomGaussian(0, 12);
 
         } else {
           // Tiki-Taka / Combination
           const creatorMid = sampleChoice(attUnits.midfielders);
           creator = (creatorMid.id !== shooter.id) ? creatorMid : null;
 
-          const combo = (creatorMid.attributes.processing * 0.5 + shooter.attributes.proprioception * 0.5) -
-                        (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5) +
-                        randomGaussian(0, 8);
+          const comboEdge = (creatorMid.attributes.processing * 0.50 + shooter.attributes.proprioception * 0.50) -
+                            (defender.attributes.scanning * 0.50 + defender.attributes.regulation * 0.50);
 
-          if (combo > 5) {
-            shotXg = Math.min(0.38, 0.19 + (combo * 0.005));
-          } else if (combo < -4) {
-            shotXg = 0.04;
-            defender.stats.tackles += 1;
-          } else {
-            shotXg = 0.09;
-          }
+          duelAdvantage = comboEdge + randomGaussian(0, 12);
         }
 
-        // 4. STAT ATTRIBUTION
+        // Attrition Check 2: Normal teams complete ~40% - 50% of final-third penetrations into shots
+        if (duelAdvantage < -3) {
+          defender.stats.tackles += 1;
+          return; // Tackled, intercepted, or cleared in the box. NO SHOT.
+        }
+
+        // --- PHASE 3: SHOT GENERATION (Only reached if Phase 1 and 2 succeed) ---
+        // Shot quality (xG) is derived directly from how cleanly the box duel was won
+        let shotXg = 0.06; // Default: tight-angle or pressured shot
+        if (duelAdvantage > 12) {
+          shotXg = Math.min(0.48, 0.22 + ((duelAdvantage - 12) * 0.008)); // Clear-cut chance / 1v1 breakaway
+        } else if (duelAdvantage > 4) {
+          shotXg = 0.14; // Good open look in the box
+        } else {
+          shotXg = 0.07; // Contested strike
+        }
+
+        // Attribute stats to the active players
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
         if (creator) {
@@ -508,13 +507,13 @@ function runRoundSimulation() {
         if (isHome) hMatchXg += shotXg;
         else aMatchXg += shotXg;
 
-        // 5. GOAL RESOLUTION (Anchored directly to xG)
+        // --- PHASE 4: FINISHING COMPOSURE VS GOALKEEPER ---
         const gk = defUnits.gk;
-        const shooterComposure = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
-        const gkSkill = (gk.attributes.dynamicPower * 0.5 + gk.attributes.processing * 0.5);
-        const finishingEdge = Math.max(0.85, Math.min(1.20, shooterComposure / Math.max(1, gkSkill)));
+        const shooterComposure = (shooter.attributes.processing * 0.50 + shooter.attributes.regulation * 0.50);
+        const gkSkill = (gk.attributes.dynamicPower * 0.40 + gk.attributes.processing * 0.40 + gk.attributes.regulation * 0.20);
 
-        const goalProb = Math.max(0.015, Math.min(0.80, shotXg * finishingEdge));
+        const skillFactor = Math.max(0.80, Math.min(1.25, shooterComposure / Math.max(1, gkSkill)));
+        const goalProb = Math.max(0.02, Math.min(0.85, shotXg * skillFactor));
 
         if (Math.random() < goalProb) {
           shooter.stats.goals += 1;
@@ -526,19 +525,18 @@ function runRoundSimulation() {
         }
       };
 
-      // Run home team shots
-      for (let i = 0; i < homeShotCount; i++) {
-        simulateTeamShot(homeTeam, awayTeam, hUnits, aUnits, true);
+      // Simulate natural possessions for both sides
+      for (let i = 0; i < hPossCount; i++) {
+        resolvePossession(homeTeam, awayTeam, hUnits, aUnits, true);
       }
-      // Run away team shots
-      for (let i = 0; i < awayShotCount; i++) {
-        simulateTeamShot(awayTeam, homeTeam, aUnits, hUnits, false);
+      for (let i = 0; i < aPossCount; i++) {
+        resolvePossession(awayTeam, homeTeam, aUnits, hUnits, false);
       }
 
       fix.hg = hGoals;
       fix.ag = aGoals;
-      fix.hxg = parseFloat(Math.max(0.2, hMatchXg).toFixed(1));
-      fix.axg = parseFloat(Math.max(0.2, aMatchXg).toFixed(1));
+      fix.hxg = parseFloat(Math.max(0.1, hMatchXg).toFixed(1));
+      fix.axg = parseFloat(Math.max(0.1, aMatchXg).toFixed(1));
       fix.played = true;
 
       updateTableRecord(d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
