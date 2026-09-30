@@ -1,4 +1,5 @@
 import { FORMATIONS } from '../constants.js';
+import { sortTableEntries } from '../engine.js';
 
 export function renderMatchView(container, ctx) {
   const userTeamId = ctx.state.userTeamId;
@@ -8,7 +9,7 @@ export function renderMatchView(container, ctx) {
   const currentRound = Math.max(1, Math.min(ctx.state.round, maxR));
   const activeRound = ctx.viewedMatchRound !== null ? ctx.viewedMatchRound : currentRound;
 
-  // Locate the user's specific fixture for this round
+  // Locate the user's fixture for this round
   const roundFixtures = ctx.state.fixtures[userDiv]?.[activeRound - 1] || [];
   const userFixture = roundFixtures.find(m => m.home === userTeamId || m.away === userTeamId);
 
@@ -19,9 +20,35 @@ export function renderMatchView(container, ctx) {
 
   const isHome = userFixture.home === userTeamId;
   const oppId = isHome ? userFixture.away : userFixture.home;
-  const homeTeam = ctx.state.teams[userFixture.home] || {};
   const oppTeam = ctx.state.teams[oppId] || { name: 'Unknown Club', tactics: {}, squad: [], formation: '4-4-2 Flat' };
-  const oppTableEntry = ctx.state.tables[userDiv]?.find(r => r.teamId === oppId) || { p: 0, w: 0, d: 0, l: 0, gd: 0, pts: 0, form: [] };
+  const hostTeam = isHome ? userTeam : oppTeam;
+
+  // League Standings and Metric Rankings
+  const rawTable = ctx.state.tables[userDiv] || [];
+  const sortedTable = sortTableEntries(rawTable);
+  const oppRank = sortedTable.findIndex(r => r.teamId === oppId) + 1;
+  const oppRow = sortedTable.find(r => r.teamId === oppId) || { p: 0, w: 0, d: 0, l: 0, pts: 0, xg: 0, xga: 0, form: [] };
+
+  // Calculate per-game averages
+  const oppP = Math.max(1, oppRow.p);
+  const oppXgPerGame = oppRow.p > 0 ? (oppRow.xg / oppP).toFixed(2) : '0.00';
+  const oppXgaPerGame = oppRow.p > 0 ? (oppRow.xga / oppP).toFixed(2) : '0.00';
+
+  // League Ranks for xG and xGA per match
+  const xgSorted = [...rawTable].sort((a, b) => {
+    const aVal = a.p > 0 ? (a.xg / a.p) : 0;
+    const bVal = b.p > 0 ? (b.xg / b.p) : 0;
+    return bVal - aVal;
+  });
+  const xgRank = xgSorted.findIndex(r => r.teamId === oppId) + 1;
+
+  // Lowest xGA per match is best defense (#1)
+  const xgaSorted = [...rawTable].sort((a, b) => {
+    const aVal = a.p > 0 ? (a.xga / a.p) : 999;
+    const bVal = b.p > 0 ? (b.xga / b.p) : 999;
+    return aVal - bVal;
+  });
+  const xgaRank = xgaSorted.findIndex(r => r.teamId === oppId) + 1;
 
   // Tactical Breakdown & Controls
   const tactics = oppTeam.tactics || {};
@@ -33,7 +60,7 @@ export function renderMatchView(container, ctx) {
   const buildMid = tactics.buildMid || 'mixed';
   const creation = tactics.chanceCreation || 'mixed';
 
-  // Helper to map slot codes (S1..S11) to actual pitch positions based on formation
+  // Helper to map slot codes to tactical roles
   const formRoles = FORMATIONS[oppTeam.formation] || FORMATIONS['4-4-2 Flat'];
   const getSlotRoleName = (p) => {
     if (!p.slot || p.slot === 'RES') return 'Reserve';
@@ -43,7 +70,7 @@ export function renderMatchView(container, ctx) {
     return formRoles[slotIdx] || 'Starter';
   };
 
-  // Select Top 3 Players by highest average across all 8 core attributes
+  // Top 3 Players by average attributes
   const calculatePillarAvg = (p) => {
     if (!p.attributes) return 0;
     const vals = Object.values(p.attributes);
@@ -55,7 +82,7 @@ export function renderMatchView(container, ctx) {
     .slice(0, 3);
 
   // Form Badges
-  const formList = oppTableEntry.form && oppTableEntry.form.length > 0 ? oppTableEntry.form : ['-'];
+  const formList = oppRow.form && oppRow.form.length > 0 ? oppRow.form : ['-'];
   const formBadges = formList.map(res => {
     let color = 'var(--text-muted)';
     let bg = 'rgba(255, 255, 255, 0.05)';
@@ -86,54 +113,65 @@ export function renderMatchView(container, ctx) {
       </div>
     </div>
 
-    <!-- Main Match Banner -->
-    <div class="panel" style="padding: 20px; margin-bottom: 16px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px;">
+    <!-- Match Header Banner -->
+    <div class="panel" style="padding: 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px;">
+          ${isHome ? 'HOME FIXTURE' : 'AWAY FIXTURE'}
+        </div>
+        <h2 style="font-size: 24px; margin: 0; color: #fff; cursor: pointer;" onclick="inspectTeam('${oppId}', 'squad')">
+          ${oppTeam.name || 'Unknown'}
+        </h2>
+      </div>
+
       <div style="text-align: right;">
-        <h2 style="font-size: 20px; margin: 0; color: ${isHome ? 'var(--accent)' : '#fff'}; cursor: pointer;" onclick="inspectTeam('${userFixture.home}', 'squad')">
-          ${homeTeam.name || 'Unknown'}
-        </h2>
-        <span style="font-size: 11px; color: var(--text-muted);">HOME</span>
-      </div>
-
-      <div style="text-align: center; min-width: 160px; padding: 8px 16px; background: rgba(0,0,0,0.25); border-radius: 6px; border: 1px solid var(--border);">
-        ${userFixture.played ? `
-          <div style="font-size: 24px; font-weight: 800; font-family: monospace; color: #fff;">${userFixture.hg}&nbsp;–&nbsp;${userFixture.ag}</div>
-          <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">xG: ${userFixture.hxg.toFixed(1)} –${userFixture.axg.toFixed(1)}</div>
-        ` : `
-          <div style="font-size: 16px; font-weight: 700; color: var(--text-muted); letter-spacing: 1px;">VS</div>
-          <div style="font-size: 11px; color: var(--accent); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px;" title="${homeTeam.stadium || 'Stadium'}">
-            ${homeTeam.stadium || 'Stadium'}
-          </div>
-        `}
-      </div>
-
-      <div style="text-align: left;">
-        <h2 style="font-size: 20px; margin: 0; color: ${!isHome ? 'var(--accent)' : '#fff'}; cursor: pointer;" onclick="inspectTeam('${userFixture.away}', 'squad')">
-          ${ctx.state.teams[userFixture.away]?.name || 'Unknown'}
-        </h2>
-        <span style="font-size: 11px; color: var(--text-muted);">AWAY</span>
+        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 4px;">Venue</div>
+        <div style="font-size: 14px; font-weight: 600; color: var(--accent);">
+          ${hostTeam.stadium || 'Coliseum'}
+        </div>
       </div>
     </div>
 
     ${userFixture.played ? `
-      <!-- Post-Match Report Placeholder -->
-      <div class="panel" style="padding: 18px; text-align: center;">
-        <h3 style="margin-top: 0; color: #fff; font-size: 14px;">POST-MATCH REPORT</h3>
-        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 0;">
-          This match has concluded. Full match event log and player match ratings will appear here in the next update.
-        </p>
+      <!-- Concluded Match Summary -->
+      <div class="panel" style="padding: 24px; text-align: center; margin-bottom: 16px;">
+        <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">FINAL RESULT</div>
+        <div style="font-size: 32px; font-weight: 800; font-family: monospace; color: #fff; margin-bottom: 4px;">
+          ${userFixture.hg} –${userFixture.ag}
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted); font-family: monospace;">
+          xG: ${userFixture.hxg.toFixed(1)} –${userFixture.axg.toFixed(1)}
+        </div>
       </div>
     ` : `
       <!-- Opposition Scouting Report -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         <div class="panel" style="padding: 16px;">
           <h3 style="margin-top: 0; font-size: 13px; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px;">
-            OPPOSITION TACTICAL PROFILE
+            OPPOSITION PROFILE & STANDINGS
           </h3>
           <div style="display: flex; flex-direction: column; gap: 9px; font-size: 12px;">
             <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Current Standing:</span>
+              <strong style="color: #fff;">#${oppRank} (${oppRow.w}-${oppRow.d}-${oppRow.l} •${oppRow.pts} PTS)</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Avg xG / Game:</span>
+              <strong style="color: #fff; font-family: monospace;">${oppXgPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgRank} in Div)</span></strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Avg xGA / Game:</span>
+              <strong style="color: #fff; font-family: monospace;">${oppXgaPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgaRank} in Div)</span></strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 9px;">
+              <span style="color: var(--text-muted);">Recent Form:</span>
+              <div style="display: flex; gap: 4px;">${formBadges}</div>
+            </div>
+
+            <!-- Tactical Controls -->
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
               <span style="color: var(--text-muted);">Blueprint:</span>
-              <strong style="color: var(--accent); text-transform: capitalize;">${blueprintName}</strong>
+              <strong style="color: #fff; text-transform: capitalize;">${blueprintName}</strong>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span style="color: var(--text-muted);">Formation:</span>
@@ -159,10 +197,6 @@ export function renderMatchView(container, ctx) {
               <span style="color: var(--text-muted);">Chance Creation:</span>
               <strong style="color: #fff; text-transform: capitalize;">${creation}</strong>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px;">
-              <span style="color: var(--text-muted);">Recent Form:</span>
-              <div style="display: flex; gap: 4px;">${formBadges}</div>
-            </div>
           </div>
         </div>
 
@@ -174,13 +208,11 @@ export function renderMatchView(container, ctx) {
             ${top3Players.map((p, idx) => {
               const posRole = getSlotRoleName(p);
               const archName = p.archetypeName || p.archetypeKey || 'Universal';
-              const avgScore = calculatePillarAvg(p).toFixed(1);
 
               return `
-                <div style="padding: 9px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 4px; display: flex; flex-direction: column; gap: 3px;">
+                <div style="padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 4px; display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="color: #fff; font-size: 13px;">${idx + 1}. ${p.name}</strong>
-                    <span style="font-family: monospace; font-size: 11px; color: var(--accent); font-weight: 700;">${avgScore} OVR</span>
+                    <strong style="color: #fff; font-size: 13px;">${p.name}</strong>
                   </div>
                   <div style="font-size: 11px; color: var(--text-muted);">
                     Last Position: <span style="color: #fff; font-weight: 600;">${posRole}</span>
