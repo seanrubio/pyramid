@@ -33,6 +33,13 @@ export function inspectTeam(teamId, targetTab = null) {
   renderLayout();
 }
 
+export function openMatchReport(homeTeamId, round) {
+  context.viewedTeamId = homeTeamId;
+  context.viewedMatchRound = round;
+  context.activeTab = 'match';
+  renderLayout();
+}
+
 export function switchTab(tab) {
   context.activeTab = tab;
   if (tab === 'league') context.viewedFixtureRound = null;
@@ -185,6 +192,7 @@ export function renderLayout() {
 Object.assign(window, {
   switchTab,
   inspectTeam,
+  openMatchReport,
   handleSimRound,
   handleStartNewSeason,
   resetGameDatabase,
