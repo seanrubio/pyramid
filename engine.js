@@ -82,7 +82,7 @@ function generatePlayer(isGK, div, natCode = null) {
   const bmi = +(randomGaussian(baseMorph.bmiMean + archetype.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
   const weightKg = Math.round(bmi * Math.pow(heightCm / 100, 2));
 
-  // Delegate phase calculation
+  // Phase calculation
   const phaseScores = getPlayerPhaseScores({ attributes });
 
   const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 0.7 ? "-" : "✓");
@@ -354,9 +354,9 @@ function buildRoundRobin(teamIds) {
   return rounds;
 }
 
-// Helper to calculate distinct phase power breakdown for a side
-function getTeamPhaseProfiles(starters) {
-  if (starters.length === 0) return { ip: 40, oop: 40, tr: 40 };
+// Calculate team phase averages plus archetype-to-tactic synergy bonus
+function getTeamPhaseProfiles(team, starters) {
+  if (starters.length === 0) return { ip: 40, oop: 40, tr: 40, synergy: 1.0 };
 
   const sums = starters.reduce((acc, p) => {
     const sc = getPlayerPhaseScores(p);
@@ -366,11 +366,71 @@ function getTeamPhaseProfiles(starters) {
     return acc;
   }, { ip: 0, oop: 0, tr: 0 });
 
+  const bpKey = team.tactics ? team.tactics.blueprint : null;
+  const bp = (bpKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[bpKey] : null;
+
+  let synergyBonus = 0;
+  if (bp && bp.favoredArchetypes) {
+    starters.forEach(p => {
+      if (bp.favoredArchetypes.includes(p.archetypeKey)) synergyBonus += 0.8;
+      if (bp.unfavoredArchetypes && bp.unfavoredArchetypes.includes(p.archetypeKey)) synergyBonus -= 0.8;
+    });
+  }
+
   return {
-    ip: sums.ip / starters.length,
-    oop: sums.oop / starters.length,
-    tr: sums.tr / starters.length
+    ip: (sums.ip / starters.length) + (synergyBonus * 0.3),
+    oop: (sums.oop / starters.length) + (synergyBonus * 0.3),
+    tr: (sums.tr / starters.length) + (synergyBonus * 0.4)
   };
+}
+
+// Tactical pace & chance modifiers
+function getTacticalPaceAndEfficiency(tactics = {}) {
+  let tempo = 1.0;     // Overall match event volume (total chances created)
+  let attBias = 1.0;   // Share of chances skewed toward attacking
+  let defBias = 1.0;   // Defensive resistance (suppression of opponent xG)
+
+  if (tactics.mentality === 'park the bus') {
+    tempo *= 0.82;
+    attBias *= 0.65;
+    defBias *= 1.35;
+  } else if (tactics.mentality === 'defensive') {
+    tempo *= 0.90;
+    attBias *= 0.82;
+    defBias *= 1.18;
+  } else if (tactics.mentality === 'attacking') {
+    tempo *= 1.12;
+    attBias *= 1.22;
+    defBias *= 0.88;
+  } else if (tactics.mentality === 'overload') {
+    tempo *= 1.25;
+    attBias *= 1.40;
+    defBias *= 0.75;
+  }
+
+  if (tactics.press === 'gegenpress') {
+    tempo *= 1.15;
+    attBias *= 1.10;
+    defBias *= 0.94;
+  } else if (tactics.press === 'high press') {
+    tempo *= 1.06;
+    attBias *= 1.05;
+    defBias *= 0.98;
+  } else if (tactics.press === 'low block') {
+    tempo *= 0.86;
+    attBias *= 0.85;
+    defBias *= 1.18;
+  }
+
+  if (tactics.chanceCreation === 'shoot on sight') {
+    tempo *= 1.10;
+    attBias *= 1.08;
+  } else if (tactics.chanceCreation === 'work into box') {
+    tempo *= 0.95;
+    attBias *= 1.08;
+  }
+
+  return { tempo, attBias, defBias };
 }
 
 function runRoundSimulation() {
@@ -397,49 +457,34 @@ function runRoundSimulation() {
       const hStarters = homeTeam.squad.filter(p => p.slot.startsWith('S'));
       const aStarters = awayTeam.squad.filter(p => p.slot.startsWith('S'));
 
-      const hProfiles = getTeamPhaseProfiles(hStarters);
-      const aProfiles = getTeamPhaseProfiles(aStarters);
+      const hProfiles = getTeamPhaseProfiles(homeTeam, hStarters);
+      const aProfiles = getTeamPhaseProfiles(awayTeam, aStarters);
 
-      // Mentality and tempo modifiers
-      const getTacticalMod = (tactics = {}) => {
-        let attMod = 1.0;
-        let defMod = 1.0;
+      const hTact = getTacticalPaceAndEfficiency(homeTeam.tactics);
+      const aTact = getTacticalPaceAndEfficiency(awayTeam.tactics);
 
-        if (tactics.mentality === 'park the bus') { attMod -= 0.28; defMod += 0.22; }
-        else if (tactics.mentality === 'defensive') { attMod -= 0.14; defMod += 0.12; }
-        else if (tactics.mentality === 'attacking') { attMod += 0.14; defMod -= 0.10; }
-        else if (tactics.mentality === 'overload')  { attMod += 0.28; defMod -= 0.20; }
+      // Match Tempo: Combined pace and pressing intensity
+      const matchPace = Math.sqrt(hTact.tempo * aTact.tempo);
 
-        if (tactics.press === 'gegenpress')       { attMod += 0.08; defMod -= 0.04; }
-        else if (tactics.press === 'low block')   { attMod -= 0.06; defMod += 0.08; }
+      // Raw Phase Strengths
+      const hAttackingPwr = (hProfiles.ip * 0.55 + hProfiles.tr * 0.45) * hTact.attBias * 1.05; // 5% home edge
+      const aDefendingPwr = (aProfiles.oop * 0.65 + aProfiles.tr * 0.35) * aTact.defBias;
 
-        if (tactics.chanceCreation === 'shoot on sight') { attMod += 0.06; }
-        else if (tactics.chanceCreation === 'work into box') { attMod += 0.04; }
+      const aAttackingPwr = (aProfiles.ip * 0.55 + aProfiles.tr * 0.45) * aTact.attBias;
+      const hDefendingPwr = (hProfiles.oop * 0.65 + hProfiles.tr * 0.35) * hTact.defBias * 1.03;
 
-        return { attMod, defMod };
-      };
+      // Power Ratios (amplified exponent to separate dominant vs struggling teams)
+      // Exponent of 2.2 widens small quality and tactical gaps into distinct match xG
+      const hAdvantage = Math.pow(hAttackingPwr / Math.max(1, aDefendingPwr), 2.2);
+      const aAdvantage = Math.pow(aAttackingPwr / Math.max(1, hDefendingPwr), 2.2);
 
-      const hTact = getTacticalMod(homeTeam.tactics);
-      const aTact = getTacticalMod(awayTeam.tactics);
+      // Match xG Calculation
+      // Baseline average expectation ~1.35 xG scaled directly by pace and relative superiority
+      const rawHomeXg = 1.35 * matchPace * hAdvantage + randomGaussian(0, 0.40);
+      const rawAwayXg = 1.15 * matchPace * aAdvantage + randomGaussian(0, 0.40);
 
-      // Dynamic match phase comparisons (Offense vs Defense + Transition battles)
-      // Home advantage provides a +4% offensive bump and slight defensive edge
-      const hAttackingPwr = ((hProfiles.ip * 0.60 + hProfiles.tr * 0.40) * 1.04) * hTact.attMod;
-      const aDefendingPwr = (aProfiles.oop * 0.70 + aProfiles.tr * 0.30) * aTact.defMod;
-
-      const aAttackingPwr = (aProfiles.ip * 0.60 + aProfiles.tr * 0.40) * aTact.attMod;
-      const hDefendingPwr = ((hProfiles.oop * 0.70 + hProfiles.tr * 0.30) * 1.02) * hTact.defMod;
-
-      // Net Rating Deltas determine base xG around a realistic 1.35 baseline
-      // Spans realistically from ~0.4 xG to ~3.2 xG per match depending on quality and styles
-      const hNetDelta = (hAttackingPwr - aDefendingPwr);
-      const aNetDelta = (aAttackingPwr - hDefendingPwr);
-
-      const homeMatchXg = 1.40 + (hNetDelta * 0.075) + randomGaussian(0, 0.35);
-      const awayMatchXg = 1.15 + (aNetDelta * 0.075) + randomGaussian(0, 0.35);
-
-      const hxg = Math.max(0.15, homeMatchXg);
-      const axg = Math.max(0.12, awayMatchXg);
+      const hxg = Math.max(0.20, parseFloat(rawHomeXg.toFixed(2)));
+      const axg = Math.max(0.15, parseFloat(rawAwayXg.toFixed(2)));
 
       // Poisson sample for discrete goals
       const sampleGoals = (lambda) => {
@@ -453,8 +498,8 @@ function runRoundSimulation() {
 
       fix.hg = hg;
       fix.ag = ag;
-      fix.hxg = parseFloat(hxg.toFixed(2));
-      fix.axg = parseFloat(axg.toFixed(2));
+      fix.hxg = hxg;
+      fix.axg = axg;
       fix.played = true;
 
       updateTableRecord(d, homeTeam.id, hg, ag, fix.hxg, fix.axg);
