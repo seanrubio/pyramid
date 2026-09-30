@@ -5,6 +5,7 @@ let state = null;
 let activeTab = 'squad';
 let tableDiv = 10;
 let viewedTeamId = null; // Current scouting context
+let statsMetric = 'goals'; // 'goals' | 'assists' | 'tackles' | 'saves' | 'xg'
 
 let squadSort = { key: 'slot', asc: true };
 let tableSort = { key: 'pts', asc: false };
@@ -208,7 +209,7 @@ function renderLayout() {
         </div>
       </div>
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
-        ${['squad', 'tactics', 'fixtures', 'table'].map(tab => `
+        ${['squad', 'tactics', 'fixtures', 'table', 'stats'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -220,7 +221,7 @@ function renderLayout() {
         <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
           <div style="font-size: 12px; color: #fbbf24;">
             Scouting: <strong style="color: #fff;">${currentTeam.name}</strong> (DIV${currentTeam.div}) 
-            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation || 'MIXED').toUpperCase()} /${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
+            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation \vert{}\vert{} 'MIXED').toUpperCase()} /${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
           </div>
           <button onclick="inspectTeam('${state.userTeamId}')" style="background: #2563eb; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer;">
             RETURN TO MY CLUB
@@ -258,6 +259,7 @@ function renderCurrentView() {
   else if (activeTab === 'tactics') renderTacticsView(ws);
   else if (activeTab === 'fixtures') renderFixturesView(ws);
   else if (activeTab === 'table') renderTableView(ws);
+  else if (activeTab === 'stats') renderStatsView(ws);
 }
 
 function getSlotRank(slot) {
@@ -722,6 +724,119 @@ function renderTableView(container) {
 function setTableDiv(d) {
   tableDiv = d;
   renderTableView(document.getElementById('view-workspace'));
+}
+
+// --- LEAGUE STATS & LEADERBOARDS VIEW ---
+function setStatsMetric(metric) {
+  statsMetric = metric;
+  renderStatsView(document.getElementById('view-workspace'));
+}
+
+function setStatsDiv(d) {
+  tableDiv = d;
+  renderStatsView(document.getElementById('view-workspace'));
+}
+
+function renderStatsView(container) {
+  const divTeams = Object.values(state.teams).filter(t => t.div === tableDiv);
+  const allPlayers = [];
+
+  divTeams.forEach(t => {
+    t.squad.forEach(p => {
+      if (p.minutesPlayed > 0) {
+        allPlayers.push({
+          ...p,
+          teamName: t.name,
+          teamId: t.id
+        });
+      }
+    });
+  });
+
+  allPlayers.sort((a, b) => {
+    const valA = (a.stats && a.stats[statsMetric]) || 0;
+    const valB = (b.stats && b.stats[statsMetric]) || 0;
+    if (valB !== valA) return valB - valA;
+    return (a.minutesPlayed || 0) - (b.minutesPlayed || 0);
+  });
+
+  const topPlayers = allPlayers.slice(0, 20);
+
+  const metricConfigs = [
+    { id: 'goals', label: 'TOP SCORERS', statKey: 'goals', col: 'G' },
+    { id: 'assists', label: 'MOST ASSISTS', statKey: 'assists', col: 'A' },
+    { id: 'xg', label: 'EXPECTED GOALS', statKey: 'xg', col: 'xG', format: v => (v || 0).toFixed(1) },
+    { id: 'tackles', label: 'TOP TACKLERS', statKey: 'tackles', col: 'TK' },
+    { id: 'saves', label: 'MOST SAVES', statKey: 'saves', col: 'SV' }
+  ];
+
+  const currentConfig = metricConfigs.find(m => m.id === statsMetric) || metricConfigs[0];
+
+  container.innerHTML = `
+    <!-- Division Selector -->
+    <div style="display: flex; gap: 4px; margin-bottom: 8px; overflow-x: auto;">
+      ${Array.from({ length: 10 }, (_, i) => i + 1).map(d => `
+        <button onclick="setStatsDiv(${d})" style="${tableDiv === d ? 'border-color: var(--accent); color: var(--accent);' : ''}">DIV ${d}</button>
+      `).join('')}
+    </div>
+
+    <!-- Category Selector -->
+    <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;">
+      ${metricConfigs.map(m => `
+        <button onclick="setStatsMetric('${m.id}')" style="${statsMetric === m.id ? 'border-color: var(--accent); color: var(--accent); font-weight: 700;' : ''}">
+          ${m.label}
+        </button>
+      `).join('')}
+    </div>
+
+    <!-- Leaderboard Table -->
+    <div class="panel" style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 35px; text-align: center;">#</th>
+            <th>Player</th>
+            <th>Club</th>
+            <th>Archetype</th>
+            <th style="text-align: center; width: 45px;">Age</th>
+            <th style="text-align: center; width: 50px;">Apps</th>
+            <th style="text-align: right; width: 60px;">Min</th>
+            <th style="text-align: right; width: 60px; font-weight: 700; color: #fff;">${currentConfig.col}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${topPlayers.length === 0 ? `
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 16px;">No match data recorded yet.</td></tr>
+          ` : topPlayers.map((p, idx) => {
+            const rawVal = p.stats ? p.stats[currentConfig.statKey] : 0;
+            const displayVal = currentConfig.format ? currentConfig.format(rawVal) : rawVal;
+            const isUserClub = p.teamId === state.userTeamId;
+            const approxApps = Math.ceil(p.minutesPlayed / 90);
+
+            return `
+              <tr style="background: ${isUserClub ? 'rgba(88, 166, 255, 0.08)' : 'transparent'};">
+                <td style="text-align: center; color: var(--text-muted);">${idx + 1}</td>
+                <td style="font-weight: 600; color: #fff;">
+                  ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
+                </td>
+                <td>
+                  <span onclick="inspectTeam('${p.teamId}', 'squad')" style="cursor: pointer; color: var(--accent); text-decoration: underline;">
+                    ${p.teamName}
+                  </span>
+                  ${isUserClub ? '<span style="font-size: 10px; color: var(--accent); margin-left: 4px;">(YOU)</span>' : ''}
+                </td>
+                <td style="color: var(--text-muted); font-size: 12px;">${p.archetypeName}</td>
+                <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
+                <td style="text-align: center; color: var(--text-muted);">${approxApps}</td>
+                <td style="text-align: right; color: var(--text-muted); font-size: 11px;">${p.minutesPlayed}'</td>
+                <td style="text-align: right; font-weight: 700; font-size: 14px; color: var(--accent);">${displayVal}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 window.addEventListener('DOMContentLoaded', boot);
