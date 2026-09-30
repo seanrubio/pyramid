@@ -220,8 +220,8 @@ function renderLayout() {
         <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
           <div style="font-size: 12px; color: #fbbf24;">
             Scouting: <strong style="color: #fff;">${currentTeam.name}</strong> (DIV${currentTeam.div}) 
-            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation \vert{}\vert{} 'MIXED').toUpperCase()} /${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
-          </div>
+            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation || 'MIXED').toUpperCase()} / ${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
+              </div>
           <button onclick="inspectTeam('${state.userTeamId}')" style="background: #2563eb; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer;">
             RETURN TO MY CLUB
           </button>
