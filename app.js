@@ -9,22 +9,6 @@ let fixturesDiv = null;
 let squadSort = { key: 'slot', asc: true };
 let tableSort = { key: 'pts', asc: false };
 
-const CURRENCY_SYMBOLS = {
-  GBP: '£',
-  EUR: '€',
-  USD: '$'
-};
-
-function formatMoney(amount) {
-  const cfg = (state && state.config) ? state.config : { currency: 'USD' };
-  const sym = CURRENCY_SYMBOLS[cfg.currency] || '$';
-
-  if (amount >= 10000000) return `${sym}${Math.round(amount / 1000000)}M`;
-  if (amount >= 1000000) return `${sym}${(amount / 1000000).toFixed(1)}M`;
-  if (amount >= 1000) return `${sym}${(amount / 1000).toFixed(0)}k`;
-  return `${sym}${amount.toLocaleString()}`;
-}
-
 // Unit conversion helpers
 function formatHeight(cm, units = 'metric') {
   if (units === 'imperial') {
@@ -52,7 +36,7 @@ async function boot() {
     const saved = localStorage.getItem('apex_wpm_save_v1');
     if (saved) {
       state = JSON.parse(saved);
-      if (!state.config) state.config = { currency: 'USD', wageCadence: 'yearly', units: 'imperial' };
+      if (!state.config) state.config = { units: 'imperial' };
       if (!state.config.units) state.config.units = 'imperial';
       tableDiv = state.teams[state.userTeamId].div;
       renderLayout();
@@ -83,8 +67,6 @@ function initializeDefaultCareer() {
   const name = 'Oakland';
   const country = 'US';
   const stadium = 'Oakland Coliseum';
-  const currency = 'USD';
-  const wageCadence = 'yearly';
   const units = 'imperial';
 
   const userTeamId = 'club_oakland';
@@ -97,8 +79,6 @@ function initializeDefaultCareer() {
     div: 10,
     stadium,
     rep: 15,
-    budget: 450000,
-    wageBudget: 18000,
     formation: '4-4-2 Flat',
     tactics: {
       mentality: 'balanced',
@@ -120,8 +100,6 @@ function initializeDefaultCareer() {
       div: city.div,
       stadium: city.stadium,
       rep: city.rep,
-      budget: Math.round(Math.pow(1.5, 11 - city.div) * 200000),
-      wageBudget: Math.round(Math.pow(1.5, 11 - city.div) * 12000),
       formation: '4-4-2 Flat',
       tactics: { 
         blueprint: city.blueprint || 'direct_aerial',
@@ -168,7 +146,7 @@ function initializeDefaultCareer() {
     season: 1,
     round: 1,
     maxRounds: 38,
-    config: { currency, wageCadence, units },
+    config: { units },
     userTeamId,
     teams,
     tables,
@@ -195,7 +173,7 @@ function renderLayout() {
           </span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span>BALANCE: <strong style="color: var(--green);">${formatMoney(userTeam.budget)}</strong></span>${isSeasonOver ? `
+          ${isSeasonOver ? `
             <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
           ` : `
             <button onclick="handleSimRound()" class="primary">${state.round === state.maxRounds ? 'PLAY FINAL ROUND' : 'PLAY ROUND'}</button>
@@ -337,7 +315,6 @@ function renderSquadView(container) {
             <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Out of Possession">OOP</th>
             <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Transitions">TR</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
-            <th onclick="sortSquad('val')" style="cursor: pointer; text-align: right;">Valuation</th>
           </tr>
         </thead>
         <tbody>
@@ -378,7 +355,6 @@ function renderSquadView(container) {
                 <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
                 <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
-                <td style="text-align: right; color: var(--green); font-weight: 600;">${formatMoney(p.val)}</td>
               </tr>
             `;
           }).join('')}
@@ -536,8 +512,6 @@ function renderFixturesView(container) {
     }
   });
 
-  const playedCount = clubSchedule.filter(f => f.match.played).length;
-
   container.innerHTML = `
     <div style="max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px;">
       
@@ -546,9 +520,6 @@ function renderFixturesView(container) {
         <div>
           <strong style="color: #fff; font-size: 14px;">${userTeam.name.toUpperCase()} FIXTURES & RESULTS</strong>
           <span style="color: var(--text-muted); font-size: 12px; margin-left: 8px;">DIVISION ${userTeam.div} • SEASON ${state.season}</span>
-        </div>
-        <div style="font-size: 11px; color: var(--text-muted);">
-          COMPLETED: <strong style="color: var(--text);">${playedCount}</strong> / ${clubSchedule.length}
         </div>
       </div>
 
