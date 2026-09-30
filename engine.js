@@ -60,7 +60,6 @@ function generatePlayer(isGK, div, natCode = null) {
   const attributes = {};
   const traits = [];
 
-  // Asymmetric thresholds matching the survival floor (+1.65 peak / -1.25 floor)
   const assetCutoff = 1.65 * DB.tierConfig.archetypeSigma;
   const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
 
@@ -89,12 +88,6 @@ function generatePlayer(isGK, div, natCode = null) {
   const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 0.7 ? "-" : "✓");
   const phaseGlyphs = `${getGlyph(phaseScores.ip)} / ${getGlyph(phaseScores.oop)} / ${getGlyph(phaseScores.tr)}`;
 
-  // Market Valuation
-  const overallAvg = (phaseScores.ip + phaseScores.oop + phaseScores.tr) / 3;
-  const tierMult = Math.pow(1.5, (11 - div));
-  const val = Math.round((Math.pow(overallAvg / 10, 2.5) * 1200 * tierMult) / 5000) * 5000;
-  const wage = Math.max(350, Math.round((val * 0.0025) / 50) * 50);
-
   return {
     id: 'p_' + Math.random().toString(36).substr(2, 9),
     name: generatePlayerName(countryObj.region),
@@ -107,9 +100,6 @@ function generatePlayer(isGK, div, natCode = null) {
     attributes,
     traits,
     phaseGlyphs,
-    val, 
-    wage,
-    contractYrs: 1 + Math.floor(Math.random() * 4),
     condition: 90 + Math.floor(Math.random() * 11),
     minutesPlayed: 0,
     slot: 'RES'
@@ -118,7 +108,6 @@ function generatePlayer(isGK, div, natCode = null) {
 
 function createFullSquad(div, primaryCountryCode) {
   const squad = [];
-  // 3 Keepers, 20 Outfielders
   for (let i = 0; i < 3; i++) {
     const nat = (Math.random() < 0.7) ? primaryCountryCode : null;
     squad.push(generatePlayer(true, div, nat));
@@ -130,7 +119,6 @@ function createFullSquad(div, primaryCountryCode) {
   return squad;
 }
 
-// Calculate dynamic tactical phase weights by blending the blueprint with active tactical sliders
 function resolveTacticalPhaseWeights(tactics = {}) {
   const bp = (tactics.blueprint && DB.tacticalBlueprints && DB.tacticalBlueprints[tactics.blueprint])
     ? DB.tacticalBlueprints[tactics.blueprint].phaseWeights
@@ -140,22 +128,18 @@ function resolveTacticalPhaseWeights(tactics = {}) {
   let oop = bp.oop;
   let tr = bp.tr;
 
-  // 1. Mentality adjustments
   if (tactics.mentality === 'park the bus') { ip -= 0.20; oop += 0.16; tr += 0.04; }
   else if (tactics.mentality === 'defensive') { ip -= 0.10; oop += 0.08; tr += 0.02; }
   else if (tactics.mentality === 'attacking') { ip += 0.10; oop -= 0.12; tr += 0.02; }
   else if (tactics.mentality === 'overload')  { ip += 0.20; oop -= 0.24; tr += 0.04; }
 
-  // 2. Pressing adjustments
   if (tactics.press === 'low block')        { ip -= 0.04; oop += 0.08; tr -= 0.04; }
   else if (tactics.press === 'high press')   { ip -= 0.04; oop += 0.04; tr -= 0.00; }
   else if (tactics.press === 'gegenpress')   { ip -= 0.12; oop += 0.04; tr += 0.08; }
 
-  // 3. Build-up distribution
   if (tactics.buildGk === 'short') { ip += 0.06; tr -= 0.06; }
   else if (tactics.buildGk === 'long') { ip -= 0.08; tr += 0.06; oop += 0.02; }
 
-  // 4. Floor clamp & normalize back to 1.00
   ip = Math.max(0.08, ip);
   oop = Math.max(0.08, oop);
   tr = Math.max(0.08, tr);
@@ -168,7 +152,6 @@ function resolveTacticalPhaseWeights(tactics = {}) {
   };
 }
 
-// Evaluate slot suitability based on position zone, blueprint affinities, morphology, and archetype compatibility
 function evaluateSlotFit(player, role, blueprintKey) {
   const scores = getPlayerPhaseScores(player);
   const a = player.attributes;
@@ -177,7 +160,6 @@ function evaluateSlotFit(player, role, blueprintKey) {
 
   let baseFit = 0;
 
-  // 1. Role-specific phase baseline & archetype restrictions
   if (role === 'CB') {
     baseFit = (scores.oop * 0.70) + (scores.tr * 0.15) + (scores.ip * 0.15);
     if (['soldier', 'disrupter', 'anticipator', 'steady_eddy'].includes(arch)) baseFit += 8.0;
@@ -217,7 +199,6 @@ function evaluateSlotFit(player, role, blueprintKey) {
     if (arch === 'target' && player.morphology.heightCm >= 190) baseFit += 4.0;
   }
 
-  // 2. Blueprint Alignment Modifiers
   if (bp) {
     if (bp.favoredArchetypes && bp.favoredArchetypes.includes(arch)) baseFit += 5.0;
     if (bp.unfavoredArchetypes && bp.unfavoredArchetypes.includes(arch)) baseFit -= 5.0;
@@ -233,7 +214,6 @@ function evaluateSlotFit(player, role, blueprintKey) {
   return baseFit;
 }
 
-// Auto-assign based on tactical blueprint fit and slot demands
 function autoAssignLineup(team) {
   team.squad.forEach(p => p.slot = 'RES');
   const bpKey = team.tactics ? team.tactics.blueprint : null;
@@ -374,6 +354,25 @@ function buildRoundRobin(teamIds) {
   return rounds;
 }
 
+// Helper to calculate distinct phase power breakdown for a side
+function getTeamPhaseProfiles(starters) {
+  if (starters.length === 0) return { ip: 40, oop: 40, tr: 40 };
+
+  const sums = starters.reduce((acc, p) => {
+    const sc = getPlayerPhaseScores(p);
+    acc.ip += sc.ip;
+    acc.oop += sc.oop;
+    acc.tr += sc.tr;
+    return acc;
+  }, { ip: 0, oop: 0, tr: 0 });
+
+  return {
+    ip: sums.ip / starters.length,
+    oop: sums.oop / starters.length,
+    tr: sums.tr / starters.length
+  };
+}
+
 function runRoundSimulation() {
   if (state.round > state.maxRounds) {
     alert("Season finished! Click 'START NEW SEASON' to begin the next campaign.");
@@ -398,26 +397,51 @@ function runRoundSimulation() {
       const hStarters = homeTeam.squad.filter(p => p.slot.startsWith('S'));
       const aStarters = awayTeam.squad.filter(p => p.slot.startsWith('S'));
 
-      const getPhasePower = (starters, tactics) => {
-        if (starters.length === 0) return 40;
-        
-        const weights = resolveTacticalPhaseWeights(tactics);
+      const hProfiles = getTeamPhaseProfiles(hStarters);
+      const aProfiles = getTeamPhaseProfiles(aStarters);
 
-        const total = starters.reduce((acc, p) => {
-          const scores = getPlayerPhaseScores(p);
-          return acc + (scores.ip * weights.ip + scores.oop * weights.oop + scores.tr * weights.tr);
-        }, 0);
+      // Mentality and tempo modifiers
+      const getTacticalMod = (tactics = {}) => {
+        let attMod = 1.0;
+        let defMod = 1.0;
 
-        return total / starters.length;
+        if (tactics.mentality === 'park the bus') { attMod -= 0.28; defMod += 0.22; }
+        else if (tactics.mentality === 'defensive') { attMod -= 0.14; defMod += 0.12; }
+        else if (tactics.mentality === 'attacking') { attMod += 0.14; defMod -= 0.10; }
+        else if (tactics.mentality === 'overload')  { attMod += 0.28; defMod -= 0.20; }
+
+        if (tactics.press === 'gegenpress')       { attMod += 0.08; defMod -= 0.04; }
+        else if (tactics.press === 'low block')   { attMod -= 0.06; defMod += 0.08; }
+
+        if (tactics.chanceCreation === 'shoot on sight') { attMod += 0.06; }
+        else if (tactics.chanceCreation === 'work into box') { attMod += 0.04; }
+
+        return { attMod, defMod };
       };
 
-      const hPwr = getPhasePower(hStarters, homeTeam.tactics) * 1.06;
-      const aPwr = getPhasePower(aStarters, awayTeam.tactics);
-      const hRatio = hPwr / (hPwr + aPwr);
+      const hTact = getTacticalMod(homeTeam.tactics);
+      const aTact = getTacticalMod(awayTeam.tactics);
 
-      const hxg = Math.max(0.2, (hRatio * 2.8) + (Math.random() * 0.8 - 0.4));
-      const axg = Math.max(0.2, ((1 - hRatio) * 2.4) + (Math.random() * 0.8 - 0.4));
+      // Dynamic match phase comparisons (Offense vs Defense + Transition battles)
+      // Home advantage provides a +4% offensive bump and slight defensive edge
+      const hAttackingPwr = ((hProfiles.ip * 0.60 + hProfiles.tr * 0.40) * 1.04) * hTact.attMod;
+      const aDefendingPwr = (aProfiles.oop * 0.70 + aProfiles.tr * 0.30) * aTact.defMod;
 
+      const aAttackingPwr = (aProfiles.ip * 0.60 + aProfiles.tr * 0.40) * aTact.attMod;
+      const hDefendingPwr = ((hProfiles.oop * 0.70 + hProfiles.tr * 0.30) * 1.02) * hTact.defMod;
+
+      // Net Rating Deltas determine base xG around a realistic 1.35 baseline
+      // Spans realistically from ~0.4 xG to ~3.2 xG per match depending on quality and styles
+      const hNetDelta = (hAttackingPwr - aDefendingPwr);
+      const aNetDelta = (aAttackingPwr - hDefendingPwr);
+
+      const homeMatchXg = 1.40 + (hNetDelta * 0.075) + randomGaussian(0, 0.35);
+      const awayMatchXg = 1.15 + (aNetDelta * 0.075) + randomGaussian(0, 0.35);
+
+      const hxg = Math.max(0.15, homeMatchXg);
+      const axg = Math.max(0.12, awayMatchXg);
+
+      // Poisson sample for discrete goals
       const sampleGoals = (lambda) => {
         let l = Math.exp(-lambda), k = 0, p = 1;
         do { k++; p *= Math.random(); } while (p > l);
@@ -474,13 +498,11 @@ function applyPlayerMinutes(team) {
   const shuffledStarters = [...subEligibleStarters].sort(() => 0.5 - Math.random());
   const substitutedStarters = new Set(shuffledStarters.slice(0, maxSubs).map(p => p.id));
 
-  // Process Starters
   starters.forEach(p => {
     const isSubbedOff = substitutedStarters.has(p.id);
     p.minutesPlayed += (isSubbedOff ? 65 : 90);
   });
 
-  // Process Substitutes
   for (let i = 0; i < maxSubs; i++) {
     benchOutfield[i].minutesPlayed += 25;
   }
