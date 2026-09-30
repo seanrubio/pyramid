@@ -701,34 +701,37 @@ function renderLeagueView(container) {
       `).join('')}
     </div>
 
-    <!-- Side-by-Side Flex Layout -->
-    <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
+    <!-- Side-by-Side Responsive Grid -->
+    <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start;">
       
       <!-- LEFT PANEL: Standings Table -->
-      <div class="panel" style="flex: 1 1 580px; overflow-x: auto;">
+      <div class="panel" style="overflow-x: auto;">
         <table style="width: 100%;">
           <thead>
             <tr>
-              <th style="width: 28px; text-align: center;">#</th>
+              <th style="width: 24px; text-align: center;">#</th>
               <th>Club</th>
-              <th style="text-align: center; width: 34px;">P</th>
-              <th style="text-align: center; width: 34px;">W</th>
-              <th style="text-align: center; width: 34px;">D</th>
-              <th style="text-align: center; width: 34px;">L</th>
-              <th style="text-align: center; width: 34px;">GD</th>
-              <th style="text-align: center; width: 44px;">xGD</th>
-              <th style="text-align: right; width: 40px; font-weight: 700; color: #fff;">PTS</th>
+              <th style="text-align: center; width: 28px;">P</th>
+              <th style="text-align: center; width: 28px;">W</th>
+              <th style="text-align: center; width: 28px;">D</th>
+              <th style="text-align: center; width: 28px;">L</th>
+              <th style="text-align: center; width: 30px;">GD</th>
+              <th style="text-align: center; width: 38px;">xGD</th>
+              <th style="text-align: right; width: 34px; font-weight: 700; color: #fff;">PTS</th>
+              <th style="text-align: right; width: 38px; color: var(--text-muted);" title="Points Per Game">PPG</th>
             </tr>
           </thead>
           <tbody>
             ${rows.map((r, idx) => {
               const isUser = (r.teamId === state.userTeamId);
+              const ppg = r.p > 0 ? (r.pts / r.p).toFixed(2) : '0.00';
+
               return `
                 <tr style="background: ${isUser ? 'rgba(88, 166, 255, 0.08)' : 'transparent'};">
                   <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${idx + 1}</td>
                   <td>
                     <span onclick="inspectTeam('${r.teamId}', 'squad')" 
-                          style="cursor: pointer; font-weight: ${isUser ? '700' : '400'}; color: var(--text); text-decoration: none;">
+                          style="cursor: pointer; font-weight: ${isUser ? '700' : '500'}; color: var(--text); text-decoration: none;">
                       ${r.name}
                     </span>
                   </td>
@@ -739,6 +742,7 @@ function renderLeagueView(container) {
                   <td style="text-align: center; font-size: 11px; color: ${r.gd > 0 ? 'var(--green)' : r.gd < 0 ? 'var(--red)' : 'var(--text-muted)'};">${r.gd > 0 ? '+' : ''}${r.gd}</td>
                   <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${r.xgd > 0 ? '+' : ''}${r.xgd.toFixed(1)}</td>
                   <td style="text-align: right; font-weight: 700; color: #fff;">${r.pts}</td>
+                  <td style="text-align: right; color: var(--text-muted); font-size: 11px; font-family: monospace;">${ppg}</td>
                 </tr>
               `;
             }).join('')}
@@ -747,47 +751,66 @@ function renderLeagueView(container) {
       </div>
 
       <!-- RIGHT PANEL: Round Fixtures Stack -->
-      <div class="panel" style="flex: 1 1 360px; padding: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">
+      <div class="panel" style="padding: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
           <strong style="color: #fff; font-size: 12px; letter-spacing: 0.05em;">ROUND ${activeRound} FIXTURES</strong>
           <div style="display: flex; gap: 4px;">
-            <button onclick="changeLeagueRound(-1)" style="padding: 2px 8px; font-size: 11px;" ${activeRound <= 1 ? 'disabled' : ''}>&lt;</button>
-            <button onclick="changeLeagueRound(1)" style="padding: 2px 8px; font-size: 11px;" ${activeRound >= maxR ? 'disabled' : ''}>&gt;</button>
+            <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px; font-size: 11px;" ${activeRound <= 1 ? 'disabled' : ''}>&lt;</button>
+            <button onclick="changeLeagueRound(1)" style="padding: 1px 6px; font-size: 11px;" ${activeRound >= maxR ? 'disabled' : ''}>&gt;</button>
           </div>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
           ${roundMatches.length === 0 ? `
             <div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 16px;">No fixtures found.</div>
           ` : roundMatches.map(m => {
             const hTeam = state.teams[m.home];
             const aTeam = state.teams[m.away];
             const isUserMatch = (m.home === state.userTeamId || m.away === state.userTeamId);
+            const isHomeWinner = m.played && m.hg > m.ag;
+            const isAwayWinner = m.played && m.ag > m.hg;
 
-            let scoreText = 'vs';
-            if (m.played) {
-              scoreText = `${m.hg} -${m.ag}`;
-            }
+            const homeWeight = isHomeWinner ? '700' : (m.home === state.userTeamId ? '700' : '400');
+            const awayWeight = isAwayWinner ? '700' : (m.away === state.userTeamId ? '700' : '400');
+
+            const homeColor = !m.played ? 'var(--text)' : (isHomeWinner ? '#ffffff' : (isAwayWinner ? 'var(--text-muted)' : 'var(--text)'));
+            const awayColor = !m.played ? 'var(--text)' : (isAwayWinner ? '#ffffff' : (isHomeWinner ? 'var(--text-muted)' : 'var(--text)'));
 
             return `
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-radius: 4px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid ${isUserMatch ? 'rgba(88, 166, 255, 0.3)' : 'var(--border)'}; font-size: 12px;">
-                <div style="flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; border-radius: 4px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid ${isUserMatch ? 'rgba(88, 166, 255, 0.3)' : 'var(--border)'}; font-size: 12px;">
+                
+                <!-- Home Team -->
+                <div style="flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px;">
                   <span onclick="inspectTeam('${m.home}', 'squad')" 
-                        style="cursor: pointer; color: var(--text); text-decoration: none; font-weight: ${m.home === state.userTeamId ? '700' : '400'};">
+                        style="cursor: pointer; text-decoration: none; font-weight: ${homeWeight}; color:${homeColor};">
                     ${hTeam ? hTeam.name : 'Unknown'}
                   </span>
                 </div>
 
-                <div style="min-width: 60px; text-align: center; font-family: monospace; font-weight: 700; color: ${m.played ? '#fff' : 'var(--text-muted)'};">
-                  ${scoreText}
+                <!-- Center Scoreboard & xG -->
+                <div style="min-width: 76px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                  ${m.played ? `
+                    <span style="font-family: var(--font-mono, monospace); font-weight: 700; font-size: 12px; letter-spacing: 0.05em; color: #fff; line-height: 1.1;">
+                      ${m.hg}&nbsp;–&nbsp;${m.ag}
+                    </span>
+                    <span style="font-family: var(--font-mono, monospace); font-size: 10px; color: var(--text-muted); letter-spacing: 0.02em; margin-top: 1px;">
+                      ${m.hxg.toFixed(1)}&nbsp;–&nbsp;${m.axg.toFixed(1)}
+                    </span>
+                  ` : `
+                    <span style="font-family: var(--font-mono, monospace); font-size: 11px; color: var(--text-muted); font-weight: 500;">
+                      vs
+                    </span>
+                  `}
                 </div>
 
-                <div style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <!-- Away Team -->
+                <div style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 6px;">
                   <span onclick="inspectTeam('${m.away}', 'squad')" 
-                        style="cursor: pointer; color: var(--text); text-decoration: none; font-weight: ${m.away === state.userTeamId ? '700' : '400'};">
+                        style="cursor: pointer; text-decoration: none; font-weight: ${awayWeight}; color:${awayColor};">
                     ${aTeam ? aTeam.name : 'Unknown'}
                   </span>
                 </div>
+
               </div>
             `;
           }).join('')}
