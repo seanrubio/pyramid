@@ -4,6 +4,7 @@ let DB = null;
 let state = null;
 let activeTab = 'squad';
 let tableDiv = 10;
+let viewedTeamId = null; // Current scouting context
 
 let squadSort = { key: 'slot', asc: true };
 let tableSort = { key: 'pts', asc: false };
@@ -35,6 +36,7 @@ async function boot() {
     if (saved) {
       state = JSON.parse(saved);
       if (!state.config) state.config = { units: 'imperial' };
+      viewedTeamId = state.userTeamId;
       tableDiv = state.teams[state.userTeamId].div;
       renderLayout();
     } else {
@@ -85,7 +87,7 @@ function initializeDefaultCareer() {
       chanceCreation: 'tiki-taka'
     },
     isUser: true,
-    squad: createFullSquad(10, country)
+    squad: createFullSquad({ id: userTeamId, div: 10, country, tactics: { chanceCreation: 'tiki-taka', press: 'mid block' } })
   };
 
   const BLUEPRINT_PRESETS = {
@@ -102,6 +104,11 @@ function initializeDefaultCareer() {
     const bpKey = city.blueprint || 'direct_aerial';
     const preset = BLUEPRINT_PRESETS[bpKey] || BLUEPRINT_PRESETS.direct_aerial;
 
+    const teamTactics = {
+      blueprint: bpKey,
+      ...preset
+    };
+
     teams[tid] = {
       id: tid,
       name: city.name,
@@ -110,12 +117,9 @@ function initializeDefaultCareer() {
       stadium: city.stadium,
       rep: city.rep,
       formation: '4-4-2 Flat',
-      tactics: { 
-        blueprint: bpKey,
-        ...preset
-      },
+      tactics: teamTactics,
       isUser: false,
-      squad: createFullSquad(city.div, city.country)
+      squad: createFullSquad({ id: tid, div: city.div, country: city.country, tactics: teamTactics })
     };
   });
 
@@ -146,6 +150,7 @@ function initializeDefaultCareer() {
   }
 
   tableDiv = 10;
+  viewedTeamId = userTeamId;
 
   state = {
     season: 1,
@@ -162,8 +167,24 @@ function initializeDefaultCareer() {
   renderLayout();
 }
 
+function getActiveContextTeam() {
+  if (!viewedTeamId || !state.teams[viewedTeamId]) {
+    viewedTeamId = state.userTeamId;
+  }
+  return state.teams[viewedTeamId];
+}
+
+function inspectTeam(teamId, targetTab = null) {
+  if (!state.teams[teamId]) return;
+  viewedTeamId = teamId;
+  if (targetTab) activeTab = targetTab;
+  renderLayout();
+}
+
 function renderLayout() {
   const userTeam = state.teams[state.userTeamId];
+  const currentTeam = getActiveContextTeam();
+  const isOpponent = (currentTeam.id !== state.userTeamId);
   const isSeasonOver = state.round > state.maxRounds;
 
   document.getElementById('app-root').innerHTML = `
@@ -192,6 +213,21 @@ function renderLayout() {
         `).join('')}
       </div>
     </header>
+
+    ${isOpponent ? `
+      <!-- Scouting Opponent Banner -->
+      <div style="background: #1f1d13; border-bottom: 1px solid #78350f; padding: 6px 16px;">
+        <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-size: 12px; color: #fbbf24;">
+            Scouting: <strong style="color: #fff;">${currentTeam.name}</strong> (DIV${currentTeam.div}) 
+            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation \vert{}\vert{} 'MIXED').toUpperCase()} /${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
+          </div>
+          <button onclick="inspectTeam('${state.userTeamId}')" style="background: #2563eb; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer;">
+            RETURN TO MY CLUB
+          </button>
+        </div>
+      </div>
+    ` : ''}
 
     <main style="max-width: 1200px; margin: 16px auto; padding: 0 16px;" id="view-workspace"></main>
   `;
@@ -269,7 +305,8 @@ function formatShortName(fullName) {
 
 // --- SQUAD DIRECTORY ---
 function renderSquadView(container) {
-  const team = state.teams[state.userTeamId];
+  const team = getActiveContextTeam();
+  const isUser = (team.id === state.userTeamId);
   const units = (state.config && state.config.units) || 'metric';
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   
@@ -294,7 +331,7 @@ function renderSquadView(container) {
         <span>Lineup: <strong style="color: ${startersCount === 11 ? 'var(--green)' : 'var(--amber)'}">${startersCount}/11 Starters</strong></span>
         <span style="color: var(--text-muted); margin-left: 12px;">Formation: ${team.formation}</span>
       </div>
-      <button onclick="autoPickLineup()">AUTO-PICK XI</button>
+      ${isUser ? `<button onclick="autoPickLineup()">AUTO-PICK XI</button>` : ''}
     </div>
 
     <div class="panel" style="overflow-x: auto;">
@@ -324,26 +361,32 @@ function renderSquadView(container) {
             const weightStr = formatWeight(p.morphology.weightKg, units);
             const st = p.stats || { goals: 0, assists: 0, xg: 0.0 };
 
-            const optionsHtml = [
-              `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
-              ...playableSlots.map(s => {
-                const isCurrent = (p.slot === s.val);
-                const occupant = occupantMap[s.val];
-                let text = s.label;
-                if (!isCurrent && occupant) {
-                  text += ` (${formatShortName(occupant.name)})`;
-                }
-                return `<option value="${s.val}" ${isCurrent ? 'selected' : ''}>${text}</option>`;
-              })
-            ].join('');
+            let slotDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${p.slot}</span>`;
+
+            if (isUser) {
+              const optionsHtml = [
+                `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
+                ...playableSlots.map(s => {
+                  const isCurrent = (p.slot === s.val);
+                  const occupant = occupantMap[s.val];
+                  let text = s.label;
+                  if (!isCurrent && occupant) {
+                    text += ` (${formatShortName(occupant.name)})`;
+                  }
+                  return `<option value="${s.val}" ${isCurrent ? 'selected' : ''}>${text}</option>`;
+                })
+              ].join('');
+
+              slotDisplay = `
+                <select onchange="handleSlotChange('${p.id}', this.value)" style="width: auto; max-width: 65px; padding: 2px 4px; font-size: 11px;">
+                  ${optionsHtml}
+                </select>
+              `;
+            }
 
             return `
               <tr>
-                <td>
-                  <select onchange="handleSlotChange('${p.id}', this.value)" style="width: auto; max-width: 65px; padding: 2px 4px; font-size: 11px;">
-                    ${optionsHtml}
-                  </select>
-                </td>
+                <td>${slotDisplay}</td>
                 <td style="font-weight: 600; color: var(--text);">
                   ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
                 </td>
@@ -400,7 +443,7 @@ function sortSquad(key) {
     squadSort.asc = (key === 'name' || key === 'slot');
   }
 
-  const team = state.teams[state.userTeamId];
+  const team = getActiveContextTeam();
   const GLYPH_WEIGHTS = { '+': 2, '✓': 1, '-': 0 };
 
   const getLastName = (fullName) => {
@@ -453,13 +496,14 @@ function sortSquad(key) {
 
 // --- TACTICS VIEW ---
 function renderTacticsView(container) {
-  const team = state.teams[state.userTeamId];
+  const team = getActiveContextTeam();
+  const isUser = (team.id === state.userTeamId);
 
   container.innerHTML = `
     <div class="panel" style="padding: 16px; max-width: 650px; display: flex; flex-direction: column; gap: 16px;">
       <div>
         <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Formation Preset:</label>
-        <select onchange="updateFormation(this.value)" style="width: 100%;">
+        <select onchange="updateFormation(this.value)" ${!isUser ? 'disabled' : ''} style="width: 100%;">
           ${Object.keys(FORMATIONS).map(f => `<option value="${f}" ${team.formation === f ? 'selected' : ''}>${f}</option>`).join('')}
         </select>
       </div>
@@ -475,7 +519,8 @@ function renderTacticsView(container) {
           <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">${sec.label}</label>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
             ${sec.opts.map(opt => `
-              <button onclick="setTactics('${sec.key}', '${opt}')" style="${team.tactics[sec.key] === opt ? 'border-color: var(--accent); color: var(--accent);' : ''}">
+              <button ${isUser ? `onclick="setTactics('${sec.key}', '${opt}')"` : 'disabled'} 
+                      style="${team.tactics[sec.key] === opt ? 'border-color: var(--accent); color: var(--accent);' : ''} ${!isUser ? 'opacity: 0.85; cursor: default;' : ''}">
                 ${opt.toUpperCase()}
               </button>
             `).join('')}
@@ -502,18 +547,18 @@ function setTactics(k, v) {
 
 // --- CLUB FIXTURES VIEW ---
 function renderFixturesView(container) {
-  const userTeam = state.teams[state.userTeamId];
-  const divFixtures = state.fixtures[userTeam.div] || [];
+  const team = getActiveContextTeam();
+  const divFixtures = state.fixtures[team.div] || [];
 
   const clubSchedule = [];
   divFixtures.forEach((roundMatches, idx) => {
-    const match = roundMatches.find(m => m.home === state.userTeamId || m.away === state.userTeamId);
+    const match = roundMatches.find(m => m.home === team.id || m.away === team.id);
     if (match) {
       clubSchedule.push({
         round: idx + 1,
         match,
-        isHome: match.home === state.userTeamId,
-        opponent: state.teams[match.home === state.userTeamId ? match.away : match.home]
+        isHome: match.home === team.id,
+        opponent: state.teams[match.home === team.id ? match.away : match.home]
       });
     }
   });
@@ -523,8 +568,8 @@ function renderFixturesView(container) {
       
       <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
         <div>
-          <strong style="color: #fff; font-size: 14px;">${userTeam.name.toUpperCase()} FIXTURES & RESULTS</strong>
-          <span style="color: var(--text-muted); font-size: 12px; margin-left: 8px;">DIVISION ${userTeam.div} • SEASON ${state.season}</span>
+          <strong style="color: #fff; font-size: 14px;">${team.name.toUpperCase()} FIXTURES & RESULTS</strong>
+          <span style="color: var(--text-muted); font-size: 12px; margin-left: 8px;">DIVISION ${team.div} • SEASON ${state.season}</span>
         </div>
       </div>
 
@@ -586,8 +631,12 @@ function renderFixturesView(container) {
                 <tr style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08);' : ''}">
                   <td style="text-align: center; color: var(--text-muted); font-family: monospace;">${round}</td>
                   <td style="text-align: center;">${venueBadge}</td>
-                  <td style="font-weight: 600; color: var(--text);">
-                    ${opponent ? opponent.name : 'Unknown Club'}
+                  <td>
+                    ${opponent ? `
+                      <span onclick="inspectTeam('${opponent.id}', 'squad')" style="cursor: pointer; font-weight: 600; color: var(--accent); text-decoration: underline;">
+                        ${opponent.name}
+                      </span>
+                    ` : 'Unknown Club'}
                   </td>
                   <td style="text-align: center;">${scoreDisplay}</td>
                   <td style="text-align: center;">${xgDisplay}</td>
@@ -642,7 +691,12 @@ function renderTableView(container) {
           ${rows.map((r, idx) => `
             <tr style="background: ${r.teamId === state.userTeamId ? 'rgba(88, 166, 255, 0.08)' : 'transparent'}">
               <td style="text-align: center; color: var(--text-muted);">${idx + 1}</td>
-              <td style="font-weight: 600;">${r.name}</td>
+              <td>
+                <span onclick="inspectTeam('${r.teamId}', 'squad')" style="cursor: pointer; font-weight: 600; color: var(--accent); text-decoration: underline;">
+                  ${r.name}
+                </span>
+                ${r.teamId === state.userTeamId ? '<span style="font-size: 10px; color: var(--accent); margin-left: 4px;">(YOU)</span>' : ''}
+              </td>
               <td style="text-align: center;">${r.p}</td>
               <td style="text-align: center;">${r.w}</td>
               <td style="text-align: center;">${r.d}</td>
