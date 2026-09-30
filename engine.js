@@ -143,67 +143,84 @@ const BLUEPRINT_ARCHETYPE_PREFERENCES = {
   }
 };
 
+// --- Blueprint-Aware Tactical Archetype Alignments ---
+const BLUEPRINT_ARCHETYPE_MAP = {
+  'flank play': ['target', 'two_way', 'dribblinho', 'soldier'],
+  'balls in behind': ['runner_in_behind', 'dribblinho', 'artist', 'anticipator'],
+  'central creator': ['artist', 'pocket_player', 'steady_eddy', 'anticipator'],
+  'patient possession': ['artist', 'pocket_player', 'steady_eddy', 'two_way'],
+  'gegenpress': ['disrupter', 'soldier', 'runner_in_behind', 'anticipator']
+};
+
 function createFullSquad(team) {
   const squad = [];
   const div = team.div || 10;
-  const baseMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
-
-  // Positional skeleton for 23-man squad
-  const squadPlan = [
-    { role: 'GK', count: 2 },
-    { role: 'CB', count: 4 },
-    { role: 'FB', count: 4 },
-    { role: 'MID', count: 6 },
-    { role: 'WING', count: 4 },
-    { role: 'ST', count: 3 }
-  ];
-
-  // Tactical bias mapping
   const style = team.tactics ? (team.tactics.chanceCreation || team.tactics.buildMid) : 'mixed';
   const press = team.tactics ? team.tactics.press : 'mid block';
-  const targetPrefs = BLUEPRINT_ARCHETYPE_PREFERENCES[style] || 
-                      (press === 'gegenpress' ? BLUEPRINT_ARCHETYPE_PREFERENCES['gegenpress'] : null);
 
-  // Club recruitment coherence (70% well-aligned, 30% mixed/mismatched)
-  const recruitmentCoherence = 0.35 + (Math.random() * 0.45);
+  // Identify preferred tactical pool
+  let favoredPool = BLUEPRINT_ARCHETYPE_MAP[style];
+  if (!favoredPool && press === 'gegenpress') {
+    favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
+  }
 
-  let squadIndex = 0;
+  // 1. Generate 2 Goalkeepers
+  for (let i = 0; i < 2; i++) {
+    const gk = generatePlayer(true, div);
+    squad.push(gk);
+  }
 
-  squadPlan.forEach(group => {
-    for (let i = 0; i < group.count; i++) {
-      let chosenArchetype = null;
-
-      // Check if blueprint favors specific archetypes for this position
-      const favoredList = targetPrefs && targetPrefs[group.role];
-      if (favoredList && Math.random() < recruitmentCoherence) {
-        const matchingArchetypes = favoredList.filter(key => DB.archetypes[key]);
-        if (matchingArchetypes.length) {
-          chosenArchetype = sampleChoice(matchingArchetypes);
-        }
-      }
-
-      // Fallback: pick any archetype valid for this role
-      if (!chosenArchetype) {
-        const available = Object.keys(DB.archetypes).filter(key => DB.archetypes[key].pos === group.role);
-        chosenArchetype = available.length ? sampleChoice(available) : Object.keys(DB.archetypes)[0];
-      }
-
-      // Natural talent spine: assign 2-3 marquee players, core starters, and raw depth
-      let talentModifier = 0;
-      if (squadIndex === 2 || squadIndex === 10 || squadIndex === 20) {
-        // Spine standouts (Star striker / playmaker / defender)
-        talentModifier = 3.5; 
-      } else if (squadIndex >= 16) {
-        // Bench depth / developing reserves
-        talentModifier = -2.5;
-      }
-
-      const playerTierMean = baseMean + talentModifier;
-      const player = generatePlayer(chosenArchetype, playerTierMean, team.id);
-      squad.push(player);
-      squadIndex++;
+  // 2. Generate 21 Outfield Players
+  // ~65% probability of selecting blueprint-fitting archetypes if recognized
+  for (let i = 0; i < 21; i++) {
+    let archetypeKey;
+    if (favoredPool && Math.random() < 0.65) {
+      archetypeKey = sampleChoice(favoredPool);
+    } else {
+      archetypeKey = sampleChoice(OUTFIELD_ARCHETYPES);
     }
-  });
+
+    // Generate base outfield player with proper div
+    const player = generatePlayer(false, div);
+    
+    // Override archetype and regenerate weighted attributes
+    player.archetypeKey = archetypeKey;
+    const arch = DB.archetypes[archetypeKey];
+    player.archetypeName = arch.name;
+
+    const tierMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
+    const assetCutoff = 1.65 * DB.tierConfig.archetypeSigma;
+    const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
+    
+    // Natural talent spine: Boost standouts (indexes 0 and 6) / trim reserve depth (indexes >= 17)
+    let talentDelta = 0;
+    if (i === 0 || i === 6) talentDelta = 3.5;
+    else if (i >= 17) talentDelta = -2.5;
+
+    player.traits = [];
+    for (const [pillar, weight] of Object.entries(arch.weights)) {
+      const rawVal = (tierMean + talentDelta) + (weight * DB.tierConfig.archetypeSigma) + randomGaussian(0, DB.tierConfig.noiseSigma);
+      const score = Math.max(1, Math.min(99, Math.round(rawVal)));
+      player.attributes[pillar] = score;
+
+      if (score >= tierMean + assetCutoff) {
+        player.traits.push(`[+${DB.traits[pillar].asset}]`);
+      } else if (score <= tierMean - liabilityCutoff) {
+        player.traits.push(`[-${DB.traits[pillar].liability}]`);
+      }
+    }
+
+    const baseMorph = DB.morphologyBaselines.outfield;
+    player.morphology.heightCm = Math.round(randomGaussian(baseMorph.heightMean + arch.morph.heightDelta, baseMorph.heightStd));
+    player.morphology.bmi = +(randomGaussian(baseMorph.bmiMean + arch.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
+    player.morphology.weightKg = Math.round(player.morphology.bmi * Math.pow(player.morphology.heightCm / 100, 2));
+
+    const phaseScores = getPlayerPhaseScores(player);
+    const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 0.7 ? "-" : "✓");
+    player.phaseGlyphs = `${getGlyph(phaseScores.ip)} / ${getGlyph(phaseScores.oop)} / ${getGlyph(phaseScores.tr)}`;
+
+    squad.push(player);
+  }
 
   return squad;
 }
