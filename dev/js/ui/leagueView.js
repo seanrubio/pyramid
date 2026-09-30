@@ -15,6 +15,75 @@ export function renderLeagueView(container, ctx) {
     return `<button onclick="setLeagueDiv(${d})" style="${activeStyle}">DIV ${d}</button>`;
   }).join('');
 
+  // Collect all players active in this division
+  const divTeams = Object.values(ctx.state.teams).filter(t => t.div === div);
+  const allDivPlayers = [];
+  divTeams.forEach(t => {
+    (t.squad || []).forEach(p => {
+      allDivPlayers.push({ player: p, team: t });
+    });
+  });
+
+  // Calculate Leaders for this Division
+  const topScorers = [...allDivPlayers]
+    .filter(x => (x.player.stats?.goals || 0) > 0)
+    .sort((a, b) => (b.player.stats.goals || 0) - (a.player.stats.goals || 0) || (b.player.stats.shots || 0) - (a.player.stats.shots || 0))
+    .slice(0, 5);
+
+  const topPlaymakers = [...allDivPlayers]
+    .filter(x => ((x.player.stats?.assists || 0) + (x.player.stats?.keyPasses || 0)) > 0)
+    .sort((a, b) => (b.player.stats.assists || 0) - (a.player.stats.assists || 0) || (b.player.stats.keyPasses || 0) - (a.player.stats.keyPasses || 0))
+    .slice(0, 5);
+
+  const topKeepers = [...allDivPlayers]
+    .filter(x => x.player.isGK && (x.player.stats?.apps || 0) > 0)
+    .sort((a, b) => (b.player.stats.cleanSheets || 0) - (a.player.stats.cleanSheets || 0) || (b.player.stats.saves || 0) - (a.player.stats.saves || 0))
+    .slice(0, 5);
+
+  const renderLeaderPod = (title, items, valueLabel, subLabelKey = null) => {
+    if (!items.length) {
+      return `
+        <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">${title}</div>
+          <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">No records yet</div>
+        </div>
+      `;
+    }
+
+    const rowsHtml = items.map((item, idx) => {
+      const p = item.player;
+      const t = item.team;
+      const isUser = t.id === ctx.state.userTeamId;
+      const primaryVal = typeof valueLabel === 'function' ? valueLabel(p) : (p.stats[valueLabel] || 0);
+      const subVal = subLabelKey ? (typeof subLabelKey === 'function' ? subLabelKey(p) : p.stats[subLabelKey] || 0) : null;
+
+      return `
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03);">
+          <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">
+            <span style="color: var(--text-muted); width: 14px; display: inline-block;">${idx + 1}.</span>
+            <strong style="color: ${isUser ? 'var(--accent)' : '#fff'}; cursor: pointer;" onclick="inspectTeam('${t.id}', 'squad')">${p.name}</strong>
+            <span style="color: var(--text-muted); font-size: 10px; margin-left: 4px;">(${t.name})</span>
+          </div>
+          <div style="font-family: monospace; font-size: 11px; text-align: right;">
+            <strong style="color: #fff;">${primaryVal}</strong>
+            ${subVal !== null ? `<span style="color: var(--text-muted); font-size: 10px;"> (${subVal})</span>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+          <span>${title}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 3px;">
+          ${rowsHtml}
+        </div>
+      </div>
+    `;
+  };
+
   const tableRowsHtml = rows.map((r, idx) => {
     const isUser = (r.teamId === ctx.state.userTeamId);
     const rank = idx + 1;
@@ -137,16 +206,31 @@ export function renderLeagueView(container, ctx) {
         </div>
       </div>
 
-      <div class="panel" style="padding: 10px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
-          <strong style="color: #fff; font-size: 12px;">ROUND ${activeRound} FIXTURES</strong>
-          <div style="display: flex; gap: 4px;">
-            <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${activeRound <= 1 ? 'disabled' : ''}>&lt;</button>
-            <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${activeRound >= maxR ? 'disabled' : ''}>&gt;</button>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Round Fixtures Box -->
+        <div class="panel" style="padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
+            <strong style="color: #fff; font-size: 12px;">ROUND ${activeRound} FIXTURES</strong>
+            <div style="display: flex; gap: 4px;">
+              <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${activeRound <= 1 ? 'disabled' : ''}>&lt;</button>
+              <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${activeRound >= maxR ? 'disabled' : ''}>&gt;</button>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            ${fixturesHtml}
           </div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          ${fixturesHtml}
+
+        <!-- Division Leaders Pods -->
+        <div class="panel" style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+            DIV ${div} LEADERS
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${renderLeaderPod('Goals (Golden Boot)', topScorers, 'goals', (p) => `${p.stats.shots || 0} sh`)}
+            ${renderLeaderPod('Playmakers (Assists / KP)', topPlaymakers, 'assists', (p) => `${p.stats.keyPasses || 0} kp`)}
+            ${renderLeaderPod('Goalkeepers (Clean Sheets / SV)', topKeepers, 'cleanSheets', (p) => `${p.stats.saves || 0} sv`)}
+          </div>
         </div>
       </div>
     </div>
