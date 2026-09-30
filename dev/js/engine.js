@@ -389,7 +389,16 @@ export function runRoundSimulation(state) {
       const aPossessions = Math.round(48 * getPaceMod(awayTeam));
 
       const resolveTeamPossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
-        const passer = sampleChoice(attUnits.midfielders);
+        // 1. Distribute passers realistically across the pitch
+        const pickPasser = () => {
+          const r = Math.random();
+          if (r < 0.22 && attUnits.defenders.length) return sampleChoice(attUnits.defenders);
+          if (r < 0.82 && attUnits.midfielders.length) return sampleChoice(attUnits.midfielders);
+          if (attUnits.forwards.length) return sampleChoice(attUnits.forwards);
+          return sampleChoice(attUnits.midfielders);
+        };
+
+        const passer = pickPasser();
         let defender = sampleChoice(defUnits.defenders);
 
         // Track pass attempt initiating possession
@@ -409,12 +418,11 @@ export function runRoundSimulation(state) {
         let delta = 0;
 
         if (creationStyle === 'flank play') {
-          const crossers = attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders;
-          const crosser = (Math.random() < 0.75 || !attUnits.wideDefenders.length) 
-            ? sampleChoice(crossers) 
-            : sampleChoice(attUnits.wideDefenders);
+          // Crossers must be wide attackers or wide defenders (not central defenders)
+          const widePool = attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.wideDefenders;
+          const crosser = widePool.length ? sampleChoice(widePool) : sampleChoice(attUnits.midfielders);
+          const fullback = defUnits.wideDefenders.length ? sampleChoice(defUnits.wideDefenders) : defender;
           
-          const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
           creator = (crosser.id !== shooter.id) ? crosser : null;
 
           let flankBonus = 0;
@@ -429,7 +437,7 @@ export function runRoundSimulation(state) {
 
           // Track Flank Play: Crosses & Aerial Duels
           crosser.stats.crosses++;
-          if (deliveryEdge >= 0) crosser.stats.crossesComp++;
+          if (deliveryEdge + randomGaussian(0, 8) >= 0) crosser.stats.crossesComp++;
 
           shooter.stats.aerialsContested++;
           defender.stats.aerialsContested++;
@@ -477,11 +485,18 @@ export function runRoundSimulation(state) {
 
         // Attack Broken Up Prior to Shot
         if (Math.random() > shotProb) {
-          if (Math.random() < 0.40) {
+          if (Math.random() < 0.45) {
+            // Contested tackle
             defender.stats.tackles++;
-            defender.stats.tacklesWon++;
+            const tckEdge = (defender.attributes.grit * 0.5 + defender.attributes.dynamicPower * 0.5) -
+                            (shooter.attributes.proprioception * 0.6);
+            if (tckEdge + randomGaussian(0, 6) >= 0) {
+              defender.stats.tacklesWon++;
+            }
           } else {
             defender.stats.interceptions++;
+            // Baseline passing progression before turnover
+            if (Math.random() < 0.60) passer.stats.passesComp++;
           }
           return;
         }
