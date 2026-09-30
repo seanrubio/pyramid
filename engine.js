@@ -437,122 +437,139 @@ function runRoundSimulation() {
           continue; // Turnover
         }
 
-        // Phase 3: Chance Creation Duel
+        // Phase 3: Chance Creation Duel & Shot Designation
         const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
         let shooter = null;
         let creator = passer;
         let defender = sampleChoice(defUnits.defenders);
-        let baseShotXg = 0.08;
+        let shotXg = 0.0;
+
+        // Realistic chance decider: Strikers shoot most, but wingers and midfielders arrive too
+        const pickAttacker = () => {
+          const roll = Math.random();
+          if (roll < 0.58 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
+          if (roll < 0.82 && attUnits.wideAttackers.length) return sampleChoice(attUnits.wideAttackers);
+          return sampleChoice(attUnits.midfielders);
+        };
 
         if (creationStyle === 'flank play') {
           const winger = sampleChoice(attUnits.wideAttackers);
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
-          const targetST = sampleChoice(attUnits.forwards);
 
-          // Winger takes on fullback
-          const crossPwr = (winger.attributes.proprioception * 0.5 + winger.attributes.dynamicPower * 0.5);
-          const tacklePwr = (fullback.attributes.dynamicPower * 0.5 + fullback.attributes.grit * 0.5);
+          // Winger decides: 70% cross into the box, 30% cut inside and shoot
+          const cutsInside = Math.random() < 0.30;
 
-          if ((crossPwr + randomGaussian(0, 8)) > tacklePwr) {
-            // Aerial duel in the box
-            const strikerAerial = targetST.morphology.heightCm * 0.4 + (targetST.attributes.dynamicPower * 0.4 + targetST.attributes.grit * 0.2);
-            const cbAerial = defender.morphology.heightCm * 0.4 + (defender.attributes.dynamicPower * 0.4 + defender.attributes.grit * 0.2);
-            
-            shooter = targetST;
-            creator = winger;
-            const diff = (strikerAerial - cbAerial) / 25;
-            baseShotXg = Math.max(0.06, Math.min(0.40, 0.14 + diff));
+          if (cutsInside) {
+            const takeOnPwr = (winger.attributes.proprioception * 0.5 + winger.attributes.dynamicPower * 0.5);
+            const tacklePwr = (fullback.attributes.dynamicPower * 0.5 + fullback.attributes.grit * 0.5);
+
+            if ((takeOnPwr + randomGaussian(0, 8)) > tacklePwr) {
+              shooter = winger;
+              creator = passer !== winger ? passer : null;
+              shotXg = Math.max(0.08, Math.min(0.24, 0.12 + ((takeOnPwr - tacklePwr) * 0.003)));
+            } else {
+              fullback.stats.tackles += 1;
+            }
           } else {
-            fullback.stats.tackles += 1;
+            // Delivery into the box
+            const target = pickAttacker();
+            const crossPwr = (winger.attributes.proprioception * 0.5 + winger.attributes.dynamicPower * 0.5);
+            const tacklePwr = (fullback.attributes.dynamicPower * 0.5 + fullback.attributes.grit * 0.5);
+
+            if ((crossPwr + randomGaussian(0, 10)) > tacklePwr) {
+              const aerialAtt = target.morphology.heightCm * 0.25 + (target.attributes.dynamicPower * 0.4 + target.attributes.grit * 0.35);
+              const aerialDef = defender.morphology.heightCm * 0.25 + (defender.attributes.dynamicPower * 0.4 + defender.attributes.grit * 0.35);
+
+              if ((aerialAtt + randomGaussian(0, 10)) > aerialDef) {
+                shooter = target;
+                creator = winger;
+                shotXg = Math.max(0.06, Math.min(0.26, 0.11 + ((aerialAtt - aerialDef) * 0.003)));
+              } else {
+                defender.stats.tackles += 1;
+              }
+            } else {
+              fullback.stats.tackles += 1;
+            }
           }
+
         } else if (creationStyle === 'balls in behind') {
-          const runner = sampleChoice(attUnits.forwards);
+          const runner = pickAttacker();
           const runPwr = (runner.attributes.dynamicPower * 0.6 + runner.attributes.bioenergetics * 0.4);
-          const recoveryPwr = (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5) * (defTeam.tactics.press === 'low block' ? 1.25 : 0.95);
+          let recoveryPwr = (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5);
+          if (defTeam.tactics.press === 'low block') recoveryPwr *= 1.20;
 
           if ((runPwr + randomGaussian(0, 10)) > recoveryPwr) {
             shooter = runner;
-            baseShotXg = Math.max(0.12, Math.min(0.55, 0.28 + ((runPwr - recoveryPwr) / 40)));
+            creator = passer !== runner ? passer : null;
+            shotXg = Math.max(0.10, Math.min(0.36, 0.18 + ((runPwr - recoveryPwr) * 0.004)));
           } else {
             defender.stats.tackles += 1;
           }
+
         } else if (creationStyle === 'central creator') {
-          const playmaker = sampleChoice(attUnits.playmakers);
-          const cb = sampleChoice(defUnits.defenders);
-          const st = sampleChoice(attUnits.forwards);
+          const playmaker = sampleChoice(attUnits.playmakers.length ? attUnits.playmakers : attUnits.midfielders);
+          const target = pickAttacker();
 
-          const visionPwr = (playmaker.attributes.scanning * 0.4 + playmaker.attributes.processing * 0.4 + playmaker.attributes.regulation * 0.2);
-          const blockPwr = (cb.attributes.scanning * 0.5 + cb.attributes.anticipator ? 15 : 0);
+          const visionPwr = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5);
+          const blockPwr = (defender.attributes.scanning * 0.6 + defender.attributes.grit * 0.4);
 
-          if ((visionPwr + randomGaussian(0, 8)) > blockPwr) {
-            shooter = st;
-            creator = playmaker;
-            baseShotXg = Math.max(0.10, Math.min(0.48, 0.22 + ((visionPwr - blockPwr) / 35)));
+          if ((visionPwr + randomGaussian(0, 10)) > blockPwr) {
+            shooter = target;
+            creator = (playmaker.id !== target.id) ? playmaker : null;
+            shotXg = Math.max(0.08, Math.min(0.30, 0.15 + ((visionPwr - blockPwr) * 0.004)));
           } else {
-            cb.stats.tackles += 1;
+            defender.stats.tackles += 1;
           }
-        } else {
-          // Tiki-Taka / Work Into Box
-          const combo1 = sampleChoice(attUnits.playmakers);
-          const combo2 = sampleChoice(attUnits.forwards);
-          const tightPassPwr = (combo1.attributes.proprioception * 0.4 + combo2.attributes.processing * 0.6);
-          const compactDefPwr = (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5);
 
-          if ((tightPassPwr + randomGaussian(0, 9)) > compactDefPwr) {
-            shooter = combo2;
-            creator = combo1;
-            baseShotXg = Math.max(0.14, Math.min(0.50, 0.24 + ((tightPassPwr - compactDefPwr) / 35)));
+        } else {
+          // Tiki-Taka / Combination
+          const creatorMid = sampleChoice(attUnits.midfielders);
+          const finisher = pickAttacker();
+
+          const comboPwr = (creatorMid.attributes.processing * 0.5 + finisher.attributes.proprioception * 0.5);
+          const compactDef = (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5);
+
+          if ((comboPwr + randomGaussian(0, 10)) > compactDef) {
+            shooter = finisher;
+            creator = (creatorMid.id !== finisher.id) ? creatorMid : null;
+            shotXg = Math.max(0.08, Math.min(0.28, 0.14 + ((comboPwr - compactDef) * 0.004)));
           } else {
             defender.stats.tackles += 1;
           }
         }
 
-        // Phase 4: Shot execution & Goalkeeper test
-        if (shooter) {
+        // Phase 4: Shot Execution & Goalkeeper Duel
+        if (shooter && shotXg > 0) {
           shooter.stats.shots += 1;
-          shooter.stats.xg = parseFloat((shooter.stats.xg + baseShotXg).toFixed(2));
-          if (creator && creator !== shooter) {
-            creator.stats.xa = parseFloat((creator.stats.xa + baseShotXg).toFixed(2));
+          shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
+          if (creator && creator.id !== shooter.id) {
+            creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
           }
 
-          if (isHomeAttacking) hMatchXg += baseShotXg;
-          else aMatchXg += baseShotXg;
+          if (isHomeAttacking) hMatchXg += shotXg;
+          else aMatchXg += shotXg;
 
           const gk = defUnits.gk;
-          const finishPwr = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5 + randomGaussian(0, 8));
-          const savePwr = (gk.attributes.dynamicPower * 0.4 + gk.attributes.processing * 0.4 + gk.attributes.regulation * 0.2);
 
-          const goalThreshold = (1.0 - baseShotXg) * savePwr;
+          // Finishing quality modifies xG by ±20% max (finishing skill can't make a 0.10 xG shot into a 90% goal)
+          const shooterSkill = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
+          const gkSkill = (gk.attributes.dynamicPower * 0.5 + gk.attributes.processing * 0.5);
+          const skillEdge = Math.max(0.80, Math.min(1.25, shooterSkill / Math.max(1, gkSkill)));
 
-          if (finishPwr > goalThreshold) {
+          // Conversion probability strictly derived from shot xG
+          const goalProb = Math.max(0.02, Math.min(0.85, shotXg * skillEdge));
+
+          if (Math.random() < goalProb) {
             shooter.stats.goals += 1;
-            if (creator && creator !== shooter) creator.stats.assists += 1;
+            if (creator && creator.id !== shooter.id) {
+              creator.stats.assists += 1;
+            }
             if (isHomeAttacking) hGoals += 1;
             else aGoals += 1;
           } else {
             gk.stats.saves += 1;
           }
         }
-      }
-
-      fix.hg = hGoals;
-      fix.ag = aGoals;
-      fix.hxg = parseFloat(Math.max(0.15, hMatchXg).toFixed(2));
-      fix.axg = parseFloat(Math.max(0.12, aMatchXg).toFixed(2));
-      fix.played = true;
-
-      updateTableRecord(d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
-      updateTableRecord(d, awayTeam.id, aGoals, hGoals, fix.axg, fix.hxg);
-
-      applyPlayerMinutes(homeTeam);
-      applyPlayerMinutes(awayTeam);
-    });
-  }
-
-  state.round++;
-  saveGameState();
-  return true;
-}
 
 function updateTableRecord(div, teamId, gf, ga, xg, xga) {
   const row = state.tables[div].find(r => r.teamId === teamId);
