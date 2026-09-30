@@ -108,41 +108,6 @@ function generatePlayer(isGK, div, natCode = null) {
   };
 }
 
-// --- engine.js (Blueprint-Aware Squad Generation) ---
-
-const BLUEPRINT_ARCHETYPE_PREFERENCES = {
-  'flank play': {
-    WING: ['speed_merchant', 'direct_winger'],
-    ST: ['target', 'poacher'],
-    FB: ['wing_back', 'inverted_fullback'],
-    MID: ['box_to_box', 'deep_lying_creator']
-  },
-  'balls in behind': {
-    ST: ['runner_in_behind', 'pressing_forward'],
-    WING: ['speed_merchant', 'inside_forward'],
-    MID: ['artist', 'deep_lying_creator'],
-    CB: ['sweeper_stopper', 'ball_playing_cb']
-  },
-  'central creator': {
-    MID: ['artist', 'deep_lying_creator', 'tempo_dictator'],
-    ST: ['false_nine', 'poacher'],
-    WING: ['inside_forward', 'wide_target'],
-    CB: ['ball_playing_cb', 'stopper']
-  },
-  'patient possession': {
-    MID: ['tempo_dictator', 'artist', 'deep_lying_creator'],
-    CB: ['ball_playing_cb'],
-    FB: ['inverted_fullback'],
-    ST: ['false_nine', 'target']
-  },
-  'gegenpress': {
-    MID: ['engine', 'ball_winner', 'box_to_box'],
-    ST: ['pressing_forward', 'runner_in_behind'],
-    WING: ['pressing_winger', 'direct_winger'],
-    CB: ['stopper', 'aggressive_stopper']
-  }
-};
-
 // --- Blueprint-Aware Tactical Archetype Alignments ---
 const BLUEPRINT_ARCHETYPE_MAP = {
   'flank play': ['target', 'two_way', 'dribblinho', 'soldier'],
@@ -158,7 +123,6 @@ function createFullSquad(team) {
   const style = team.tactics ? (team.tactics.chanceCreation || team.tactics.buildMid) : 'mixed';
   const press = team.tactics ? team.tactics.press : 'mid block';
 
-  // Identify preferred tactical pool
   let favoredPool = BLUEPRINT_ARCHETYPE_MAP[style];
   if (!favoredPool && press === 'gegenpress') {
     favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
@@ -171,7 +135,6 @@ function createFullSquad(team) {
   }
 
   // 2. Generate 21 Outfield Players
-  // ~65% probability of selecting blueprint-fitting archetypes if recognized
   for (let i = 0; i < 21; i++) {
     let archetypeKey;
     if (favoredPool && Math.random() < 0.65) {
@@ -180,10 +143,8 @@ function createFullSquad(team) {
       archetypeKey = sampleChoice(OUTFIELD_ARCHETYPES);
     }
 
-    // Generate base outfield player with proper div
     const player = generatePlayer(false, div);
     
-    // Override archetype and regenerate weighted attributes
     player.archetypeKey = archetypeKey;
     const arch = DB.archetypes[archetypeKey];
     player.archetypeName = arch.name;
@@ -192,7 +153,6 @@ function createFullSquad(team) {
     const assetCutoff = 1.65 * DB.tierConfig.archetypeSigma;
     const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
     
-    // Natural talent spine: Boost standouts (indexes 0 and 6) / trim reserve depth (indexes >= 17)
     let talentDelta = 0;
     if (i === 0 || i === 6) talentDelta = 3.5;
     else if (i >= 17) talentDelta = -2.5;
@@ -453,8 +413,6 @@ function sampleChoice(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// --- engine.js (Empirical Rate-Anchored Match Loop) ---
-
 function sigmoid(x) {
   return 1 / (1 + Math.exp(-x));
 }
@@ -488,7 +446,6 @@ function runRoundSimulation() {
       let hGoals = 0;
       let aGoals = 0;
 
-      // Base: 48 possessions per team, modulated +/- 10% by tactical mentality
       const getPaceMod = (t) => {
         let p = 1.0;
         if (t.tactics.mentality === 'attacking') p += 0.08;
@@ -500,7 +457,7 @@ function runRoundSimulation() {
         return p;
       };
 
-      const hPossessions = Math.round(48 * getPaceMod(homeTeam) * 1.02); // 2% home territory
+      const hPossessions = Math.round(48 * getPaceMod(homeTeam) * 1.02);
       const aPossessions = Math.round(48 * getPaceMod(awayTeam));
 
       const resolveTeamPossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
@@ -518,15 +475,19 @@ function runRoundSimulation() {
         let creator = (passer.id !== shooter.id) ? passer : null;
         const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
 
-        // 1. DUEL ADVANTAGE DELTA (Attacker vs Defender)
         let delta = 0;
 
         if (creationStyle === 'flank play') {
-          const winger = sampleChoice(attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders);
+          // Cross can come from either a wide attacker or an overlapping wide defender
+          const crossers = attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders;
+          const crosser = (Math.random() < 0.75 || !attUnits.wideDefenders.length) 
+            ? sampleChoice(crossers) 
+            : sampleChoice(attUnits.wideDefenders);
+          
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
-          creator = winger;
+          creator = (crosser.id !== shooter.id) ? crosser : null;
 
-          const deliveryEdge = (winger.attributes.proprioception + winger.attributes.dynamicPower) -
+          const deliveryEdge = (crosser.attributes.proprioception + crosser.attributes.dynamicPower) -
                                (fullback.attributes.dynamicPower + fullback.attributes.grit);
           const aerialEdge = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.4) -
                              (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.4);
@@ -538,8 +499,11 @@ function runRoundSimulation() {
                   (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5 + lowBlockShield);
 
         } else if (creationStyle === 'central creator') {
-          const playmaker = sampleChoice(attUnits.playmakers.length ? attUnits.playmakers : attUnits.midfielders);
-          creator = (playmaker.id !== shooter.id) ? playmaker : null;
+          const playmakerPool = attUnits.playmakers.length ? attUnits.playmakers : attUnits.midfielders;
+          const candidate = sampleChoice(playmakerPool);
+          creator = (candidate.id !== shooter.id) ? candidate : null;
+
+          const playmaker = creator || passer;
           delta = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) -
                   (defender.attributes.scanning * 0.6 + defender.attributes.grit * 0.4);
 
@@ -551,39 +515,35 @@ function runRoundSimulation() {
                   (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5);
         }
 
-        // Add random in-match duel noise
         delta += randomGaussian(0, 10);
 
-        // 2. SHOT PROBABILITY (Real-world baseline = 18% of possessions result in a shot)
-        // Sigmoid mapping: delta = 0 -> 18% shot rate; delta = +15 -> 28% shot rate; delta = -15 -> 10% shot rate
         const shotProb = 0.18 * sigmoid(delta * 0.08) / 0.5;
 
         if (Math.random() > shotProb) {
           defender.stats.tackles += 1;
-          return; // Tackled, intercepted, or cleared. NO SHOT.
+          return;
         }
 
-        // 3. SHOT QUALITY (xG anchored to real-world 0.105 baseline)
-        let shotXg = 0.04; // Contested baseline
+        let shotXg = 0.04;
         if (delta > 12) {
-          shotXg = Math.min(0.38, 0.18 + ((delta - 12) * 0.006)); // Clear-cut breakaway / open box header
+          shotXg = Math.min(0.38, 0.18 + ((delta - 12) * 0.006));
         } else if (delta > 2) {
-          shotXg = 0.12; // Solid box attempt
+          shotXg = 0.12;
         } else {
-          shotXg = 0.045; // Pressed attempt under heavy coverage
+          shotXg = 0.045;
         }
 
-        // Record individual player stats
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
-        if (creator) {
+        
+        // Realistic xA tracking (~68% potential assists)
+        if (creator && Math.random() < 0.68) {
           creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
         }
 
         if (isHome) hMatchXg += shotXg;
         else aMatchXg += shotXg;
 
-        // 4. GOALKEEPER DUEL & FINISHING
         const gk = defUnits.gk;
         const shooterComposure = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
         const gkSkill = (gk.attributes.dynamicPower * 0.4 + gk.attributes.processing * 0.4 + gk.attributes.regulation * 0.2);
@@ -593,7 +553,12 @@ function runRoundSimulation() {
 
         if (Math.random() < goalProb) {
           shooter.stats.goals += 1;
-          if (creator) creator.stats.assists += 1;
+          
+          // Real-world calibration: ~68% of goals are assisted
+          if (creator && Math.random() < 0.68) {
+            creator.stats.assists += 1;
+          }
+          
           if (isHome) hGoals += 1;
           else aGoals += 1;
         } else {
@@ -601,7 +566,6 @@ function runRoundSimulation() {
         }
       };
 
-      // Run home and away possessions
       for (let i = 0; i < hPossessions; i++) {
         resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
       }
