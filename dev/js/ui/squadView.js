@@ -44,6 +44,9 @@ export function renderSquadView(container, ctx) {
   const units = ctx.state.config?.units || 'metric';
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
 
+  if (!ctx.squadViewMode) ctx.squadViewMode = 'general';
+  const mode = ctx.squadViewMode;
+
   const starterSlots = formRoles.map((role, i) => ({ val: `S${i + 1}`, label: role }));
   const benchSlots = Array.from({ length: 9 }, (_, i) => ({ val: `B${i + 1}`, label: `BN ${i + 1}` }));
   const playableSlots = [...starterSlots, ...benchSlots];
@@ -53,11 +56,160 @@ export function renderSquadView(container, ctx) {
 
   const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
 
+  const pct = (num, den) => (den > 0 ? `${((num / den) * 100).toFixed(0)}%` : '—');
+  const p90 = (val, mins) => (mins > 0 ? ((val / mins) * 90).toFixed(2) : '—');
+
+  let tableHeaderHtml = '';
+  if (mode === 'general') {
+    tableHeaderHtml = `
+      <tr>
+        <th onclick="sortSquad('slot')" style="cursor: pointer; width: 68px;">Slot</th>
+        <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
+        <th onclick="sortSquad('age')" style="cursor: pointer; text-align: center; width: 36px;">Age</th>
+        <th onclick="sortSquad('heightCm')" style="cursor: pointer; text-align: center; width: 44px;">${units === 'imperial' ? 'FT' : 'CM'}</th>
+        <th onclick="sortSquad('weightKg')" style="cursor: pointer; text-align: center; width: 44px;">${units === 'imperial' ? 'LB' : 'KG'}</th>
+        <th onclick="sortSquad('archetypeName')" style="cursor: pointer;">Archetype</th>
+        <th>Traits</th>
+        <th onclick="sortSquad('ip')" style="cursor: pointer; text-align: center; width: 35px;">IP</th>
+        <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 35px;">OOP</th>
+        <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 35px;">TR</th>
+        <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right; width: 48px;">Min</th>
+      </tr>
+    `;
+  } else {
+    // Shared table headers for both OVR and p90
+    tableHeaderHtml = `
+      <tr>
+        <th onclick="sortSquad('slot')" style="cursor: pointer; width: 68px;">Slot</th>
+        <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
+        <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right; width: 48px;">Min</th>
+        <th onclick="sortSquad('goals')" style="cursor: pointer; text-align: center; width: 38px;">G</th>
+        <th onclick="sortSquad('xg')" style="cursor: pointer; text-align: center; width: 42px;">xG</th>
+        <th onclick="sortSquad('shots')" style="cursor: pointer; text-align: center; width: 38px;">SH</th>
+        <th onclick="sortSquad('assists')" style="cursor: pointer; text-align: center; width: 38px;">A</th>
+        <th onclick="sortSquad('xa')" style="cursor: pointer; text-align: center; width: 42px;">xA</th>
+        <th onclick="sortSquad('keyPasses')" style="cursor: pointer; text-align: center; width: 38px;">KP</th>
+        <th onclick="sortSquad('cmpPct')" style="cursor: pointer; text-align: center; width: 46px;">CMP%</th>
+        <th onclick="sortSquad('crsPct')" style="cursor: pointer; text-align: center; width: 46px;">CRS%</th>
+        <th onclick="sortSquad('tckPct')" style="cursor: pointer; text-align: center; width: 46px;">TCK%</th>
+        <th onclick="sortSquad('aerPct')" style="cursor: pointer; text-align: center; width: 46px;">AER%</th>
+        <th onclick="sortSquad('svPct')" style="cursor: pointer; text-align: center; width: 46px;">SV%</th>
+      </tr>
+    `;
+  }
+
+  const tableBodyRows = team.squad.map(p => {
+    const glyphs = parseGlyphs(p.phaseGlyphs);
+    const st = p.stats || {};
+    const mins = p.minutesPlayed || 0;
+
+    let slotDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${p.slot}</span>`;
+    if (isUser) {
+      const optionsHtml = [
+        `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
+        ...playableSlots.map(s => {
+          const isCurrent = (p.slot === s.val);
+          const occupant = occupantMap[s.val];
+          let text = s.label + (!isCurrent && occupant ? ` (${formatShortName(occupant.name)})` : '');
+          return `<option value="${s.val}" ${isCurrent ? 'selected' : ''}>${text}</option>`;
+        })
+      ].join('');
+
+      slotDisplay = `
+        <select onchange="handleSlotChange('${p.id}', this.value)" style="width: auto; max-width: 65px; padding: 2px 4px; font-size: 11px;">
+          ${optionsHtml}
+        </select>
+      `;
+    }
+
+    if (mode === 'general') {
+      return `
+        <tr>
+          <td>${slotDisplay}</td>
+          <td style="font-weight: 600; color: var(--text);">
+            ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
+          </td>
+          <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
+          <td style="text-align: center; font-size: 11px;">${formatHeight(p.morphology.heightCm, units)}</td>
+          <td style="text-align: center; font-size: 11px;">${formatWeight(p.morphology.weightKg, units)}</td>
+          <td style="color: var(--text);">${p.archetypeName}</td>
+          <td>${renderTraitBadges(p.traits)}</td>
+          <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
+          <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
+          <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
+          <td style="text-align: right; color: var(--text-muted);">${mins}'</td>
+        </tr>
+      `;
+    }
+
+    // STATS (OVR)
+    if (mode === 'ovr') {
+      return `
+        <tr>
+          <td>${slotDisplay}</td>
+          <td style="font-weight: 600; color: var(--text);">
+            ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
+          </td>
+          <td style="text-align: right; color: var(--text-muted);">${mins}'</td>
+          <td style="text-align: center; font-weight: 700; color: #fff;">${st.goals || 0}</td>
+          <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${(st.xg || 0).toFixed(1)}</td>
+          <td style="text-align: center; color: var(--text-muted);">${st.shots || 0}</td>
+          <td style="text-align: center; color: var(--accent); font-weight: 700;">${st.assists || 0}</td>
+          <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${(st.xa || 0).toFixed(1)}</td>
+          <td style="text-align: center; color: var(--text-muted);">${st.keyPasses || 0}</td>
+          <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.passesComp, st.passes)}</td>
+          <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.crossesComp, st.crosses)}</td>
+          <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.tacklesWon, st.tackles)}</td>
+          <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.aerialsWon, st.aerialsContested)}</td>
+          <td style="text-align: center; font-family: monospace; font-size: 11px; color: ${p.isGK ? 'var(--accent)' : 'inherit'};">
+            ${p.isGK ? pct(st.saves, st.shotsFaced) : '—'}
+          </td>
+        </tr>
+      `;
+    }
+
+    // STATS (p90)
+    return `
+      <tr>
+        <td>${slotDisplay}</td>
+        <td style="font-weight: 600; color: var(--text);">
+          ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
+        </td>
+        <td style="text-align: right; color: var(--text-muted);">${mins}'</td>
+        <td style="text-align: center; font-weight: 700; color: #fff; font-family: monospace; font-size: 11px;">${p90(st.goals || 0, mins)}</td>
+        <td style="text-align: center; color: var(--text-muted); font-family: monospace; font-size: 11px;">${p90(st.xg || 0, mins)}</td>
+        <td style="text-align: center; color: var(--text-muted); font-family: monospace; font-size: 11px;">${p90(st.shots || 0, mins)}</td>
+        <td style="text-align: center; color: var(--accent); font-weight: 700; font-family: monospace; font-size: 11px;">${p90(st.assists || 0, mins)}</td>
+        <td style="text-align: center; color: var(--text-muted); font-family: monospace; font-size: 11px;">${p90(st.xa || 0, mins)}</td>
+        <td style="text-align: center; color: var(--text-muted); font-family: monospace; font-size: 11px;">${p90(st.keyPasses || 0, mins)}</td>
+        <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.passesComp, st.passes)}</td>
+        <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.crossesComp, st.crosses)}</td>
+        <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.tacklesWon, st.tackles)}</td>
+        <td style="text-align: center; font-family: monospace; font-size: 11px;">${pct(st.aerialsWon, st.aerialsContested)}</td>
+        <td style="text-align: center; font-family: monospace; font-size: 11px; color: ${p.isGK ? 'var(--accent)' : 'inherit'};">
+          ${p.isGK ? pct(st.saves, st.shotsFaced) : '—'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
   container.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <div>
-        <span>Lineup: <strong style="color: ${startersCount === 11 ? 'var(--green)' : 'var(--amber)'}">${startersCount}/11 Starters</strong></span>
-        <span style="color: var(--text-muted); margin-left: 12px;">Formation: ${team.formation}</span>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="display: flex; gap: 3px;">
+          ${[
+            { key: 'general', label: 'GENERAL' },
+            { key: 'ovr', label: 'STATS (OVR)' },
+            { key: 'p90', label: 'STATS (P90)' }
+          ].map(tab => `
+            <button onclick="setSquadViewMode('${tab.key}')" style="padding: 2px 8px; font-size: 11px; font-weight: 700; ${ctx.squadViewMode === tab.key ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
+              ${tab.label}
+            </button>
+          `).join('')}
+        </div>
+        <span style="font-size: 11px; color: var(--text-muted);">
+          Lineup: <strong style="color: ${startersCount === 11 ? 'var(--green)' : 'var(--amber)'}">${startersCount}/11 Starters</strong> • Formation: ${team.formation}
+        </span>
       </div>
       ${isUser ? `<button onclick="autoPickLineup()">AUTO-PICK XI</button>` : ''}
     </div>
@@ -65,77 +217,19 @@ export function renderSquadView(container, ctx) {
     <div class="panel" style="overflow-x: auto;">
       <table>
         <thead>
-          <tr>
-            <th onclick="sortSquad('slot')" style="cursor: pointer; width: 68px;">Slot</th>
-            <th onclick="sortSquad('name')" style="cursor: pointer;">Player</th>
-            <th onclick="sortSquad('archetypeName')" style="cursor: pointer;">Archetype</th>
-            <th onclick="sortSquad('age')" style="cursor: pointer; text-align: center;">Age</th>
-            <th onclick="sortSquad('heightCm')" style="cursor: pointer; text-align: center;">${units === 'imperial' ? 'FT' : 'CM'}</th>
-            <th onclick="sortSquad('weightKg')" style="cursor: pointer; text-align: center;">${units === 'imperial' ? 'LB' : 'KG'}</th>
-            <th>Traits</th>
-            <th onclick="sortSquad('ip')" style="cursor: pointer; text-align: center; width: 35px;">IP</th>
-            <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 35px;">OOP</th>
-            <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 35px;">TR</th>
-            <th onclick="sortSquad('goals')" style="cursor: pointer; text-align: center; width: 30px;">G</th>
-            <th onclick="sortSquad('assists')" style="cursor: pointer; text-align: center; width: 30px;">A</th>
-            <th onclick="sortSquad('xg')" style="cursor: pointer; text-align: center; width: 40px;">xG</th>
-            <th onclick="sortSquad('tackles')" style="cursor: pointer; text-align: center; width: 32px;">TK</th>
-            <th onclick="sortSquad('saves')" style="cursor: pointer; text-align: center; width: 32px;">SV</th>
-            <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right; width: 45px;">Min</th>
-          </tr>
+          ${tableHeaderHtml}
         </thead>
         <tbody>
-          ${team.squad.map(p => {
-            const glyphs = parseGlyphs(p.phaseGlyphs);
-            const st = p.stats || { goals: 0, assists: 0, xg: 0.0, tackles: 0, saves: 0 };
-
-            let slotDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${p.slot}</span>`;
-
-            if (isUser) {
-              const optionsHtml = [
-                `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
-                ...playableSlots.map(s => {
-                  const isCurrent = (p.slot === s.val);
-                  const occupant = occupantMap[s.val];
-                  let text = s.label + (!isCurrent && occupant ? ` (${formatShortName(occupant.name)})` : '');
-                  return `<option value="${s.val}" ${isCurrent ? 'selected' : ''}>${text}</option>`;
-                })
-              ].join('');
-
-              slotDisplay = `
-                <select onchange="handleSlotChange('${p.id}', this.value)" style="width: auto; max-width: 65px; padding: 2px 4px; font-size: 11px;">
-                  ${optionsHtml}
-                </select>
-              `;
-            }
-
-            return `
-              <tr>
-                <td>${slotDisplay}</td>
-                <td style="font-weight: 600; color: var(--text);">
-                  ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
-                </td>
-                <td style="color: var(--text);">${p.archetypeName}</td>
-                <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
-                <td style="text-align: center; font-size: 11px;">${formatHeight(p.morphology.heightCm, units)}</td>
-                <td style="text-align: center; font-size: 11px;">${formatWeight(p.morphology.weightKg, units)}</td>
-                <td>${renderTraitBadges(p.traits)}</td>
-                <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
-                <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
-                <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
-                <td style="text-align: center; font-weight: 700; color: #fff;">${st.goals}</td>
-                <td style="text-align: center; color: var(--accent);">${st.assists}</td>
-                <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${(st.xg || 0).toFixed(1)}</td>
-                <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${st.tackles || 0}</td>
-                <td style="text-align: center; color: ${p.isGK ? 'var(--accent)' : 'var(--text-muted)'}; font-size: 11px;">${p.isGK ? (st.saves || 0) : '-'}</td>
-                <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
-              </tr>
-            `;
-          }).join('')}
+          ${tableBodyRows}
         </tbody>
       </table>
     </div>
   `;
+}
+
+export function setSquadViewMode(mode, ctx, renderLayout) {
+  ctx.squadViewMode = mode;
+  renderLayout();
 }
 
 export function handleSlotChange(pid, newSlot, ctx, renderLayout, saveGameState) {
@@ -170,6 +264,22 @@ export function sortSquad(key, ctx, renderLayout) {
   const getLastName = (fullName) => fullName.trim().split(/\s+/).pop().toLowerCase();
   const getSlotRank = (slot) => slot.startsWith('S') ? parseInt(slot.slice(1), 10) : slot.startsWith('B') ? 100 + parseInt(slot.slice(1), 10) : 999;
 
+  const getMetricVal = (p, k) => {
+    const st = p.stats || {};
+    const mins = p.minutesPlayed || 0;
+    const isP90 = ctx.squadViewMode === 'p90';
+
+    if (k === 'cmpPct') return (st.passes || 0) > 0 ? (st.passesComp / st.passes) : -1;
+    if (k === 'crsPct') return (st.crosses || 0) > 0 ? (st.crossesComp / st.crosses) : -1;
+    if (k === 'tckPct') return (st.tackles || 0) > 0 ? (st.tacklesWon / st.tackles) : -1;
+    if (k === 'aerPct') return (st.aerialsContested || 0) > 0 ? (st.aerialsWon / st.aerialsContested) : -1;
+    if (k === 'svPct') return (st.shotsFaced || 0) > 0 ? (st.saves / st.shotsFaced) : -1;
+
+    let baseVal = st[k] || 0;
+    if (isP90 && mins > 0) return (baseVal / mins) * 90;
+    return baseVal;
+  };
+
   team.squad.sort((a, b) => {
     if (s.key === 'slot') return s.asc ? getSlotRank(a.slot) - getSlotRank(b.slot) : getSlotRank(b.slot) - getSlotRank(a.slot);
     if (s.key === 'name') {
@@ -181,8 +291,10 @@ export function sortSquad(key, ctx, renderLayout) {
       const valB = GLYPH_WEIGHTS[parseGlyphs(b.phaseGlyphs)[s.key]] ?? 1;
       return valA !== valB ? (s.asc ? valA - valB : valB - valA) : getLastName(a.name).localeCompare(getLastName(b.name));
     }
-    if (['goals', 'assists', 'xg', 'tackles', 'saves'].includes(s.key)) {
-      return s.asc ? (a.stats?.[s.key] || 0) - (b.stats?.[s.key] || 0) : (b.stats?.[s.key] || 0) - (a.stats?.[s.key] || 0);
+    if (['goals', 'xg', 'shots', 'assists', 'xa', 'keyPasses', 'cmpPct', 'crsPct', 'tckPct', 'aerPct', 'svPct'].includes(s.key)) {
+      const valA = getMetricVal(a, s.key);
+      const valB = getMetricVal(b, s.key);
+      return s.asc ? valA - valB : valB - valA;
     }
     if (s.key === 'heightCm') return s.asc ? a.morphology.heightCm - b.morphology.heightCm : b.morphology.heightCm - a.morphology.heightCm;
     if (s.key === 'weightKg') return s.asc ? a.morphology.weightKg - b.morphology.weightKg : b.morphology.weightKg - a.morphology.weightKg;
