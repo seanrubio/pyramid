@@ -87,12 +87,12 @@ export function renderLeagueView(container, ctx) {
     const shortName = formatShortName(p.name);
 
     return `
-      <div style="display: grid; grid-template-columns: 18px 1fr auto auto; align-items: center; gap: 6px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+      <div style="display: grid; grid-template-columns: 18px 1fr 100px auto; align-items: center; gap: 8px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
         <span style="color: var(--text-muted); font-weight: 700;">${idx + 1}.</span>
         <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           <strong style="color: ${isUser ? 'var(--accent)' : '#fff'}; cursor: pointer;" onclick="inspectTeam('${t.id}', 'squad')">${shortName}</strong>
         </span>
-        <span style="color: var(--text-muted); font-size: 10px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;">
+        <span style="color: var(--text-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;">
           ${t.name}
         </span>
         <div style="font-family: monospace; font-size: 11px; text-align: right; min-width: 70px;">
