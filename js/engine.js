@@ -1,45 +1,18 @@
-// --- SIMULATION ENGINE (DISCRETE PLAYER-LEVEL DUEL ENGINE) ---
+import { FORMATIONS, GK_ARCHETYPES, OUTFIELD_ARCHETYPES, BLUEPRINT_ARCHETYPE_MAP } from './constants.js';
+import { randomGaussian, sampleChoice, sigmoid } from './math.js';
 
-const FORMATIONS = {
-  '4-4-2 Flat': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'],
-  '4-4-2 Diamond': ['GK', 'LB', 'CB', 'CB', 'RB', 'DM', 'LM', 'RM', 'AM', 'ST', 'ST'],
-  '4-2-3-1': ['GK', 'LB', 'CB', 'CB', 'RB', 'DM', 'DM', 'LW', 'AM', 'RW', 'ST'],
-  '4-1-2-3': ['GK', 'LB', 'CB', 'CB', 'RB', 'DM', 'CM', 'CM', 'LW', 'ST', 'RW'],
-  '3-5-2': ['GK', 'CB', 'CB', 'CB', 'LB', 'DM', 'CM', 'CM', 'RB', 'ST', 'ST'],
-  '3-4-3': ['GK', 'CB', 'CB', 'CB', 'LM', 'CM', 'CM', 'RM', 'LW', 'ST', 'RW'],
-  '4-3-2-1': ['GK', 'LB', 'CB', 'CB', 'RB', 'CM', 'DM', 'CM', 'AM', 'AM', 'ST'],
-  '4-5-1': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'DM', 'CM', 'RM', 'ST'],
-  '5-4-1': ['GK', 'LB', 'CB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST']
-};
-
-const GK_ARCHETYPES = [
-  'gk_shot_stopper', 'gk_cross_collector', 'gk_possession_platform', 'gk_disrupter', 'gk_organizer'
-];
-
-const OUTFIELD_ARCHETYPES = [
-  'runner_in_behind', 'pocket_player', 'target', 'dribblinho', 'artist', 
-  'anticipator', 'disrupter', 'soldier', 'two_way', 'steady_eddy'
-];
-
-function randomGaussian(mean = 0, stdDev = 1) {
-  let u = 1 - Math.random();
-  let v = Math.random();
-  let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-  return mean + z * stdDev;
-}
-
-function getCountry(code) {
+export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
 
-function generatePlayerName(region = 'anglo') {
+export function generatePlayerName(DB, region = 'anglo') {
   const pool = DB.namePools[region] || DB.namePools['anglo'];
   const first = pool.first[Math.floor(Math.random() * pool.first.length)];
   const last = pool.last[Math.floor(Math.random() * pool.last.length)];
   return `${first} ${last}`;
 }
 
-function getPlayerPhaseScores(p) {
+export function getPlayerPhaseScores(p) {
   const a = p.attributes;
   const ip = (a.proprioception * 0.20) + (a.dynamicPower * 0.15) + (a.bioenergetics * 0.075) + (a.scanning * 0.20) + (a.processing * 0.15) + (a.regulation * 0.075) + (a.grit * 0.075) + (a.stewardship * 0.075);
   const oop = (a.proprioception * 0.075) + (a.dynamicPower * 0.20) + (a.bioenergetics * 0.15) + (a.scanning * 0.15) + (a.processing * 0.075) + (a.regulation * 0.075) + (a.grit * 0.15) + (a.stewardship * 0.125);
@@ -47,8 +20,8 @@ function getPlayerPhaseScores(p) {
   return { ip, oop, tr };
 }
 
-function generatePlayer(isGK, div, natCode = null) {
-  const countryObj = natCode ? getCountry(natCode) : DB.countries[Math.floor(Math.random() * DB.countries.length)];
+export function generatePlayer(DB, isGK, div, natCode = null) {
+  const countryObj = natCode ? getCountry(DB, natCode) : DB.countries[Math.floor(Math.random() * DB.countries.length)];
   const pool = isGK ? GK_ARCHETYPES : OUTFIELD_ARCHETYPES;
   const archetypeKey = pool[Math.floor(Math.random() * pool.length)];
   const archetype = DB.archetypes[archetypeKey];
@@ -83,7 +56,7 @@ function generatePlayer(isGK, div, natCode = null) {
 
   return {
     id: 'p_' + Math.random().toString(36).substr(2, 9),
-    name: generatePlayerName(countryObj.region),
+    name: generatePlayerName(DB, countryObj.region),
     nat: countryObj.code,
     isGK,
     archetypeKey,
@@ -96,53 +69,27 @@ function generatePlayer(isGK, div, natCode = null) {
     condition: 90 + Math.floor(Math.random() * 11),
     minutesPlayed: 0,
     slot: 'RES',
-    stats: {
-      goals: 0,
-      assists: 0,
-      shots: 0,
-      xg: 0.0,
-      xa: 0.0,
-      tackles: 0,
-      saves: 0
-    }
+    stats: { goals: 0, assists: 0, shots: 0, xg: 0.0, xa: 0.0, tackles: 0, saves: 0 }
   };
 }
 
-// --- Blueprint-Aware Tactical Archetype Alignments ---
-const BLUEPRINT_ARCHETYPE_MAP = {
-  'flank play': ['target', 'two_way', 'dribblinho', 'soldier'],
-  'balls in behind': ['runner_in_behind', 'dribblinho', 'artist', 'anticipator'],
-  'central creator': ['artist', 'pocket_player', 'steady_eddy', 'anticipator'],
-  'patient possession': ['artist', 'pocket_player', 'steady_eddy', 'two_way'],
-  'gegenpress': ['disrupter', 'soldier', 'runner_in_behind', 'anticipator']
-};
-
-function createFullSquad(team) {
+export function createFullSquad(DB, team) {
   const squad = [];
   const div = team.div || 10;
   const style = team.tactics ? (team.tactics.chanceCreation || team.tactics.buildMid) : 'mixed';
   const press = team.tactics ? team.tactics.press : 'mid block';
 
   let favoredPool = BLUEPRINT_ARCHETYPE_MAP[style];
-  if (!favoredPool && press === 'gegenpress') {
-    favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
-  }
+  if (!favoredPool && press === 'gegenpress') favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
 
-  for (let i = 0; i < 2; i++) {
-    const gk = generatePlayer(true, div);
-    squad.push(gk);
-  }
+  for (let i = 0; i < 2; i++) squad.push(generatePlayer(DB, true, div));
 
   for (let i = 0; i < 21; i++) {
-    let archetypeKey;
-    if (favoredPool && Math.random() < 0.65) {
-      archetypeKey = sampleChoice(favoredPool);
-    } else {
-      archetypeKey = sampleChoice(OUTFIELD_ARCHETYPES);
-    }
+    const archetypeKey = (favoredPool && Math.random() < 0.65)
+      ? sampleChoice(favoredPool)
+      : sampleChoice(OUTFIELD_ARCHETYPES);
 
-    const player = generatePlayer(false, div);
-    
+    const player = generatePlayer(DB, false, div);
     player.archetypeKey = archetypeKey;
     const arch = DB.archetypes[archetypeKey];
     player.archetypeName = arch.name;
@@ -161,11 +108,8 @@ function createFullSquad(team) {
       const score = Math.max(1, Math.min(99, Math.round(rawVal)));
       player.attributes[pillar] = score;
 
-      if (score >= tierMean + assetCutoff) {
-        player.traits.push(`[+${DB.traits[pillar].asset}]`);
-      } else if (score <= tierMean - liabilityCutoff) {
-        player.traits.push(`[-${DB.traits[pillar].liability}]`);
-      }
+      if (score >= tierMean + assetCutoff) player.traits.push(`[+${DB.traits[pillar].asset}]`);
+      else if (score <= tierMean - liabilityCutoff) player.traits.push(`[-${DB.traits[pillar].liability}]`);
     }
 
     const baseMorph = DB.morphologyBaselines.outfield;
@@ -183,14 +127,13 @@ function createFullSquad(team) {
   return squad;
 }
 
-function evaluateSlotFit(player, role, blueprintKey) {
+export function evaluateSlotFit(DB, player, role, blueprintKey) {
   const scores = getPlayerPhaseScores(player);
   const a = player.attributes;
   const arch = player.archetypeKey;
   const bp = (blueprintKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[blueprintKey] : null;
 
   let baseFit = 0;
-
   if (role === 'CB') {
     baseFit = (scores.oop * 0.70) + (scores.tr * 0.15) + (scores.ip * 0.15);
     if (['soldier', 'disrupter', 'anticipator', 'steady_eddy'].includes(arch)) baseFit += 8.0;
@@ -225,20 +168,17 @@ function evaluateSlotFit(player, role, blueprintKey) {
   }
 
   if (bp) {
-    if (bp.favoredArchetypes && bp.favoredArchetypes.includes(arch)) baseFit += 5.0;
-    if (bp.unfavoredArchetypes && bp.unfavoredArchetypes.includes(arch)) baseFit -= 5.0;
-    if (bp.keyPillars) {
-      bp.keyPillars.forEach(pillar => {
-        if (a[pillar] >= 75) baseFit += 1.5;
-        else if (a[pillar] <= 60) baseFit -= 1.5;
-      });
-    }
+    if (bp.favoredArchetypes?.includes(arch)) baseFit += 5.0;
+    if (bp.unfavoredArchetypes?.includes(arch)) baseFit -= 5.0;
+    bp.keyPillars?.forEach(pillar => {
+      if (a[pillar] >= 75) baseFit += 1.5;
+      else if (a[pillar] <= 60) baseFit -= 1.5;
+    });
   }
-
   return baseFit;
 }
 
-function autoAssignLineup(team) {
+export function autoAssignLineup(DB, team) {
   team.squad.forEach(p => p.slot = 'RES');
   const bpKey = team.tactics ? team.tactics.blueprint : null;
   const bp = (bpKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[bpKey] : null;
@@ -260,36 +200,20 @@ function autoAssignLineup(team) {
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   let availableOutfield = team.squad.filter(p => !p.isGK);
 
-  const outfieldSlots = formRoles.slice(1).map((role, idx) => ({
-    role,
-    slotCode: `S${idx + 2}`
-  }));
-
-  const getRolePriority = (role) => {
-    if (role === 'CB') return 1;
-    if (role === 'ST') return 2;
-    if (['DM', 'CM', 'AM'].includes(role)) return 3;
-    return 4;
-  };
-
+  const outfieldSlots = formRoles.slice(1).map((role, idx) => ({ role, slotCode: `S${idx + 2}` }));
+  const getRolePriority = (role) => (role === 'CB' ? 1 : role === 'ST' ? 2 : ['DM', 'CM', 'AM'].includes(role) ? 3 : 4);
   outfieldSlots.sort((a, b) => getRolePriority(a.role) - getRolePriority(b.role));
 
   for (const slot of outfieldSlots) {
     if (availableOutfield.length === 0) break;
-    availableOutfield.sort((a, b) => {
-      const fitA = evaluateSlotFit(a, slot.role, bpKey);
-      const fitB = evaluateSlotFit(b, slot.role, bpKey);
-      return fitB - fitA;
-    });
+    availableOutfield.sort((a, b) => evaluateSlotFit(DB, b, slot.role, bpKey) - evaluateSlotFit(DB, a, slot.role, bpKey));
     const chosen = availableOutfield.shift();
     chosen.slot = slot.slotCode;
   }
 
   const remainingGKs = team.squad.filter(p => p.isGK && p.slot === 'RES');
   let benchIndex = 1;
-  if (remainingGKs.length > 0) {
-    remainingGKs[0].slot = `B${benchIndex++}`;
-  }
+  if (remainingGKs.length > 0) remainingGKs[0].slot = `B${benchIndex++}`;
 
   const remainingOutfield = team.squad.filter(p => !p.isGK && p.slot === 'RES');
   remainingOutfield.sort((a, b) => {
@@ -303,7 +227,7 @@ function autoAssignLineup(team) {
   }
 }
 
-function validateLineup(team) {
+export function validateLineup(team) {
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
   if (starters.length !== 11) return { valid: false, error: `Lineup incomplete: ${starters.length}/11 starters assigned.` };
   const hasGk = starters.some(p => p.isGK);
@@ -311,7 +235,7 @@ function validateLineup(team) {
   return { valid: true };
 }
 
-function generateFixtures(teams) {
+export function generateFixtures(teams) {
   const fixtures = {};
   for (let d = 1; d <= 10; d++) {
     const divTeams = Object.values(teams).filter(t => t.div === d).map(t => t.id);
@@ -320,7 +244,7 @@ function generateFixtures(teams) {
   return fixtures;
 }
 
-function buildRoundRobin(teamIds) {
+export function buildRoundRobin(teamIds) {
   const n = teamIds.length;
   let pool = [...teamIds];
   const rounds = [];
@@ -339,43 +263,30 @@ function buildRoundRobin(teamIds) {
       } else {
         if ((i + r) % 2 === 1) { home = t2; away = t1; }
       }
-      roundFixtures.push({
-        home, away, played: false,
-        hg: 0, ag: 0, hxg: 0, axg: 0
-      });
+      roundFixtures.push({ home, away, played: false, hg: 0, ag: 0, hxg: 0, axg: 0 });
     }
     rounds.push(roundFixtures);
     const fixed = pool[0];
     const rest = pool.slice(1);
-    const last = rest.pop();
-    pool = [fixed, last, ...rest];
+    pool = [fixed, rest.pop(), ...rest];
   }
 
   for (let r = 0; r < halfRounds; r++) {
     const reverseRound = rounds[r].map(fix => ({
-      home: fix.away,
-      away: fix.home,
-      played: false,
-      hg: 0, ag: 0, hxg: 0, axg: 0
+      home: fix.away, away: fix.home, played: false, hg: 0, ag: 0, hxg: 0, axg: 0
     }));
     rounds.push(reverseRound);
   }
   return rounds;
 }
 
-function getPitchUnits(team) {
+export function getPitchUnits(team) {
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
 
   const units = {
-    gk: null,
-    defenders: [],
-    wideDefenders: [],
-    defensiveMidfielders: [],
-    midfielders: [],
-    wideAttackers: [],
-    playmakers: [],
-    forwards: []
+    gk: null, defenders: [], wideDefenders: [], defensiveMidfielders: [],
+    midfielders: [], wideAttackers: [], playmakers: [], forwards: []
   };
 
   starters.forEach(p => {
@@ -384,23 +295,12 @@ function getPitchUnits(team) {
 
     if (role === 'GK') units.gk = p;
     else if (role === 'CB') units.defenders.push(p);
-    else if (['LB', 'RB'].includes(role)) {
-      units.defenders.push(p);
-      units.wideDefenders.push(p);
-    } else if (role === 'DM') {
-      units.defensiveMidfielders.push(p);
-      units.midfielders.push(p);
-    } else if (['LM', 'RM', 'LW', 'RW'].includes(role)) {
-      units.wideAttackers.push(p);
-      units.midfielders.push(p);
-    } else if (role === 'AM') {
-      units.playmakers.push(p);
-      units.midfielders.push(p);
-    } else if (role === 'ST') {
-      units.forwards.push(p);
-    } else {
-      units.midfielders.push(p);
-    }
+    else if (['LB', 'RB'].includes(role)) { units.defenders.push(p); units.wideDefenders.push(p); }
+    else if (role === 'DM') { units.defensiveMidfielders.push(p); units.midfielders.push(p); }
+    else if (['LM', 'RM', 'LW', 'RW'].includes(role)) { units.wideAttackers.push(p); units.midfielders.push(p); }
+    else if (role === 'AM') { units.playmakers.push(p); units.midfielders.push(p); }
+    else if (role === 'ST') units.forwards.push(p);
+    else units.midfielders.push(p);
   });
 
   if (!units.gk) units.gk = starters.find(p => p.isGK) || starters[0];
@@ -411,15 +311,7 @@ function getPitchUnits(team) {
   return units;
 }
 
-function sampleChoice(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function sigmoid(x) {
-  return 1 / (1 + Math.exp(-x));
-}
-
-function runRoundSimulation() {
+export function runRoundSimulation(state) {
   if (state.round > state.maxRounds) {
     alert("Season finished! Click 'START NEW SEASON' to begin the next campaign.");
     return false;
@@ -439,14 +331,10 @@ function runRoundSimulation() {
     roundFixtures.forEach(fix => {
       const homeTeam = state.teams[fix.home];
       const awayTeam = state.teams[fix.away];
-
       const hUnits = getPitchUnits(homeTeam);
       const aUnits = getPitchUnits(awayTeam);
 
-      let hMatchXg = 0.0;
-      let aMatchXg = 0.0;
-      let hGoals = 0;
-      let aGoals = 0;
+      let hMatchXg = 0.0, aMatchXg = 0.0, hGoals = 0, aGoals = 0;
 
       const getPaceMod = (t) => {
         let p = 1.0;
@@ -477,11 +365,9 @@ function runRoundSimulation() {
         let creator = (passer.id !== shooter.id) ? passer : null;
         const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
         const defPress = defTeam.tactics.press || 'mid block';
-
         let delta = 0;
 
         if (creationStyle === 'flank play') {
-          // Flank attacks bypass central congestion; exploit narrow defensive blocks
           const crossers = attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders;
           const crosser = (Math.random() < 0.75 || !attUnits.wideDefenders.length) 
             ? sampleChoice(crossers) 
@@ -490,7 +376,6 @@ function runRoundSimulation() {
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
           creator = (crosser.id !== shooter.id) ? crosser : null;
 
-          // Compact defensive shapes leave space on the flanks (+5 to +8 exploit bonus)
           let flankBonus = 0;
           if (defPress === 'low block') flankBonus = 6.0;
           else if (defPress === 'mid block') flankBonus = 3.0;
@@ -502,7 +387,6 @@ function runRoundSimulation() {
           delta = (deliveryEdge * 0.4 + aerialEdge * 0.6);
 
         } else if (creationStyle === 'balls in behind') {
-          // Exploits high pressing lines heavily; shut down by deep low blocks
           let depthDelta = 0;
           if (defPress === 'low block') depthDelta = -14.0;
           else if (defPress === 'gegenpress' || defPress === 'high press') depthDelta = 8.5;
@@ -511,12 +395,10 @@ function runRoundSimulation() {
                   (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5);
 
         } else if (creationStyle === 'central creator') {
-          // Central Playmaker Screen: Check for Defensive Midfielders (DM) first
           if (defUnits.defensiveMidfielders.length > 0 && Math.random() < 0.65) {
             defender = sampleChoice(defUnits.defensiveMidfielders);
           }
 
-          // 65% routes through primary playmakers, 35% through any midfielder
           const playmakerPool = (Math.random() < 0.65 && attUnits.playmakers.length) 
             ? attUnits.playmakers 
             : attUnits.midfielders;
@@ -524,53 +406,35 @@ function runRoundSimulation() {
           creator = (candidate.id !== shooter.id) ? candidate : null;
           const playmaker = creator || passer;
 
-          // Central Congestion Penalty: Low & Mid blocks choke central passing lanes
           let congestionPenalty = 0;
           if (defPress === 'low block') congestionPenalty = 10.0;
           else if (defPress === 'mid block') congestionPenalty = 5.0;
 
-          // Defending central play relies on reading lanes (scanning) and positioning/disruption (grit + regulation)
           const playmakerCreativeForce = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) - congestionPenalty;
           const defenderResistance = (defender.attributes.scanning * 0.4 + defender.attributes.grit * 0.3 + defender.attributes.regulation * 0.3);
-
           delta = (playmakerCreativeForce - defenderResistance);
 
         } else {
-          // Tiki-Taka / Combination: Needs composure & short processing under press
           const creatorMid = sampleChoice(attUnits.midfielders);
           creator = (creatorMid.id !== shooter.id) ? creatorMid : null;
-
           let pressFriction = (defPress === 'gegenpress') ? 4.0 : 0;
           delta = (creatorMid.attributes.processing * 0.5 + shooter.attributes.proprioception * 0.5) -
                   (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5 + pressFriction);
         }
 
         delta += randomGaussian(0, 10);
-
         const shotProb = 0.18 * sigmoid(delta * 0.08) / 0.5;
 
         if (Math.random() > shotProb) {
-          if (Math.random() < 0.22) {
-            defender.stats.tackles += 1;
-          }
+          if (Math.random() < 0.22) defender.stats.tackles += 1;
           return;
         }
 
-        let shotXg = 0.04;
-        if (delta > 12) {
-          shotXg = Math.min(0.38, 0.18 + ((delta - 12) * 0.006));
-        } else if (delta > 2) {
-          shotXg = 0.12;
-        } else {
-          shotXg = 0.045;
-        }
+        let shotXg = delta > 12 ? Math.min(0.38, 0.18 + ((delta - 12) * 0.006)) : (delta > 2 ? 0.12 : 0.045);
 
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
-        
-        if (creator && Math.random() < 0.65) {
-          creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
-        }
+        if (creator && Math.random() < 0.65) creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
 
         if (isHome) hMatchXg += shotXg;
         else aMatchXg += shotXg;
@@ -579,33 +443,22 @@ function runRoundSimulation() {
         const shooterComposure = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
         const gkSkill = (gk.attributes.dynamicPower * 0.4 + gk.attributes.processing * 0.4 + gk.attributes.regulation * 0.2);
         const finishingEdge = Math.max(0.85, Math.min(1.20, shooterComposure / Math.max(1, gkSkill)));
-
         const goalProb = Math.max(0.015, Math.min(0.80, shotXg * finishingEdge));
 
         if (Math.random() < goalProb) {
           shooter.stats.goals += 1;
-          
-          if (creator && Math.random() < 0.65) {
-            creator.stats.assists += 1;
-          } else if (passer && passer.id !== shooter.id && Math.random() < 0.15) {
-            passer.stats.assists += 1;
-          }
+          if (creator && Math.random() < 0.65) creator.stats.assists += 1;
+          else if (passer && passer.id !== shooter.id && Math.random() < 0.15) passer.stats.assists += 1;
           
           if (isHome) hGoals += 1;
           else aGoals += 1;
-        } else {
-          if (Math.random() < 0.55) {
-            gk.stats.saves += 1;
-          }
+        } else if (Math.random() < 0.55) {
+          gk.stats.saves += 1;
         }
       };
 
-      for (let i = 0; i < hPossessions; i++) {
-        resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
-      }
-      for (let i = 0; i < aPossessions; i++) {
-        resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
-      }
+      for (let i = 0; i < hPossessions; i++) resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
+      for (let i = 0; i < aPossessions; i++) resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
 
       fix.hg = hGoals;
       fix.ag = aGoals;
@@ -613,8 +466,8 @@ function runRoundSimulation() {
       fix.axg = parseFloat(Math.max(0.1, aMatchXg).toFixed(1));
       fix.played = true;
 
-      updateTableRecord(d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
-      updateTableRecord(d, awayTeam.id, aGoals, hGoals, fix.axg, fix.hxg);
+      updateTableRecord(state, d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
+      updateTableRecord(state, d, awayTeam.id, aGoals, hGoals, fix.axg, fix.hxg);
 
       applyPlayerMinutes(homeTeam);
       applyPlayerMinutes(awayTeam);
@@ -622,11 +475,10 @@ function runRoundSimulation() {
   }
 
   state.round++;
-  saveGameState();
   return true;
 }
 
-function updateTableRecord(div, teamId, gf, ga, xg, xga) {
+export function updateTableRecord(state, div, teamId, gf, ga, xg, xga) {
   const row = state.tables[div].find(r => r.teamId === teamId);
   if (!row) return;
 
@@ -643,10 +495,9 @@ function updateTableRecord(div, teamId, gf, ga, xg, xga) {
   else { row.l++; row.form.push('L'); }
 }
 
-function applyPlayerMinutes(team) {
+export function applyPlayerMinutes(team) {
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
   const bench = team.squad.filter(p => p.slot.startsWith('B'));
-
   const subEligibleStarters = starters.filter(p => p.slot !== 'S1');
   const benchOutfield = bench.filter(p => !p.isGK);
 
@@ -655,8 +506,7 @@ function applyPlayerMinutes(team) {
   const substitutedStarters = new Set(shuffledStarters.slice(0, maxSubs).map(p => p.id));
 
   starters.forEach(p => {
-    const isSubbedOff = substitutedStarters.has(p.id);
-    p.minutesPlayed += (isSubbedOff ? 65 : 90);
+    p.minutesPlayed += (substitutedStarters.has(p.id) ? 65 : 90);
   });
 
   for (let i = 0; i < maxSubs; i++) {
@@ -664,7 +514,7 @@ function applyPlayerMinutes(team) {
   }
 }
 
-function resetSeasonClean() {
+export function resetSeasonClean(state) {
   for (let d = 1; d <= 10; d++) {
     state.tables[d].forEach(r => {
       r.p = 0; r.w = 0; r.d = 0; r.l = 0;
@@ -684,7 +534,4 @@ function resetSeasonClean() {
   state.fixtures = generateFixtures(state.teams);
   state.season++;
   state.round = 1;
-
-  saveGameState();
-  return true;
 }
