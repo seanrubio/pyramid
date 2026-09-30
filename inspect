@@ -1,2 +1,1 @@
-localStorage.removeItem('apex_wpm_save_v1');
-location.reload();
+localStorage.clear(); location.reload();
