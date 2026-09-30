@@ -367,7 +367,6 @@ export function runRoundSimulation(state) {
     if (!roundFixtures) continue;
 
     roundFixtures.forEach(fix => {
-      const isUserMatch = (fix.home === state.userTeamId || fix.away === state.userTeamId);
       const homeTeam = state.teams[fix.home];
       const awayTeam = state.teams[fix.away];
       const hUnits = getPitchUnits(homeTeam);
@@ -375,30 +374,43 @@ export function runRoundSimulation(state) {
 
       let hMatchXg = 0.0, aMatchXg = 0.0, hGoals = 0, aGoals = 0;
 
-      // In-Memory Box Score Container (only populated for user match)
-      const userMatchReport = isUserMatch ? {
-        round: state.round,
-        homeTeam: { id: homeTeam.id, name: homeTeam.name, goals: 0, xg: 0.0 },
-        awayTeam: { id: awayTeam.id, name: awayTeam.name, goals: 0, xg: 0.0 },
+      // Fixture-level report container (serialized directly on fix)
+      const report = {
         homeStats: { shots: 0, sot: 0, passes: 0, passesComp: 0, tackles: 0, tacklesWon: 0, saves: 0 },
         awayStats: { shots: 0, sot: 0, passes: 0, passesComp: 0, tackles: 0, tacklesWon: 0, saves: 0 },
         homePlayers: {},
         awayPlayers: {}
-      } : null;
+      };
 
-      const recordPlayerAction = (side, player, actionKey, delta = 1) => {
-        if (!userMatchReport || !player) return;
-        const bucket = side === 'home' ? userMatchReport.homePlayers : userMatchReport.awayPlayers;
+      const initReportPlayer = (side, player, slotRole, defaultMins = 90) => {
+        if (!player) return;
+        const bucket = side === 'home' ? report.homePlayers : report.awayPlayers;
         if (!bucket[player.id]) {
           bucket[player.id] = {
+            id: player.id,
             name: player.name,
-            slotRole: player.slotRole || (player.slot && player.slot.startsWith('B') ? 'SUB' : '—'),
+            slot: player.slot || '',
+            slotRole: slotRole || 'SUB',
             isGK: !!player.isGK,
-            goals: 0, assists: 0, shots: 0, xg: 0.0, passes: 0, passesComp: 0, tacklesWon: 0, saves: 0
+            minutes: defaultMins,
+            goals: 0, assists: 0, shots: 0, xg: 0.0, xa: 0.0,
+            passes: 0, passesComp: 0,
+            tackles: 0, tacklesWon: 0,
+            aerialsContested: 0, aerialsWon: 0,
+            saves: 0
           };
         }
-        if (actionKey === 'xg') {
-          bucket[player.id].xg = parseFloat((bucket[player.id].xg + delta).toFixed(2));
+      };
+
+      (homeTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => initReportPlayer('home', p, p.slotRole, 90));
+      (awayTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => initReportPlayer('away', p, p.slotRole, 90));
+
+      const recordPlayerAction = (side, player, actionKey, delta = 1) => {
+        if (!player) return;
+        const bucket = side === 'home' ? report.homePlayers : report.awayPlayers;
+        if (!bucket[player.id]) initReportPlayer(side, player, player.slotRole || 'SUB', 25);
+        if (actionKey === 'xg' || actionKey === 'xa') {
+          bucket[player.id][actionKey] = parseFloat((bucket[player.id][actionKey] + delta).toFixed(2));
         } else {
           bucket[player.id][actionKey] = (bucket[player.id][actionKey] || 0) + delta;
         }
@@ -422,7 +434,6 @@ export function runRoundSimulation(state) {
         const sideKey = isHome ? 'home' : 'away';
         const oppSideKey = isHome ? 'away' : 'home';
 
-        // 1. Distribute passers realistically across the entire outfield
         const pickPasser = () => {
           const r = Math.random();
           if (r < 0.25 && attUnits.defenders.length) return sampleChoice(attUnits.defenders);
@@ -433,11 +444,10 @@ export function runRoundSimulation(state) {
 
         const passer = pickPasser();
         let defender = sampleChoice(defUnits.defenders);
+
         passer.stats.passes++;
-        if (userMatchReport) {
-          userMatchReport[sideKey + 'Stats'].passes++;
-          recordPlayerAction(sideKey, passer, 'passes');
-        }
+        report[sideKey + 'Stats'].passes++;
+        recordPlayerAction(sideKey, passer, 'passes');
 
         const pickShooter = () => {
           const roll = Math.random();
@@ -452,7 +462,6 @@ export function runRoundSimulation(state) {
         const defPress = defTeam.tactics.press || 'mid block';
         let delta = 0;
 
-        // Crosses happen across ALL tactics whenever wide players get involved
         const hasWideOutlet = attUnits.wideAttackers.length > 0 || attUnits.wideDefenders.length > 0;
         const crossChance = (creationStyle === 'flank play') ? 0.65 : (hasWideOutlet ? 0.30 : 0.10);
         const isCrossDelivery = Math.random() < crossChance;
@@ -480,10 +489,15 @@ export function runRoundSimulation(state) {
 
           shooter.stats.aerialsContested++;
           defender.stats.aerialsContested++;
+          recordPlayerAction(sideKey, shooter, 'aerialsContested');
+          recordPlayerAction(oppSideKey, defender, 'aerialsContested');
+
           if (aerialEdge + randomGaussian(0, 6) >= 0) {
             shooter.stats.aerialsWon++;
+            recordPlayerAction(sideKey, shooter, 'aerialsWon');
           } else {
             defender.stats.aerialsWon++;
+            recordPlayerAction(oppSideKey, defender, 'aerialsWon');
           }
 
         } else if (creationStyle === 'balls in behind') {
@@ -522,11 +536,11 @@ export function runRoundSimulation(state) {
         delta += randomGaussian(0, 10);
         const shotProb = 0.18 * sigmoid(delta * 0.08) / 0.5;
 
-        // Attack Broken Up Prior to Shot
         if (Math.random() > shotProb) {
           if (Math.random() < 0.45) {
             defender.stats.tackles++;
-            if (userMatchReport) userMatchReport[oppSideKey + 'Stats'].tackles++;
+            report[oppSideKey + 'Stats'].tackles++;
+            recordPlayerAction(oppSideKey, defender, 'tackles');
 
             const defTacklePower = (defender.attributes.grit * 0.55 + defender.attributes.dynamicPower * 0.45);
             const attDribblePower = (shooter.attributes.proprioception * 0.65 + shooter.attributes.dynamicPower * 0.35);
@@ -534,10 +548,8 @@ export function runRoundSimulation(state) {
             const tackleWinProb = 0.60 + (tckDelta * 0.008);
             if (Math.random() < Math.max(0.40, Math.min(0.80, tackleWinProb))) {
               defender.stats.tacklesWon++;
-              if (userMatchReport) {
-                userMatchReport[oppSideKey + 'Stats'].tacklesWon++;
-                recordPlayerAction(oppSideKey, defender, 'tacklesWon');
-              }
+              report[oppSideKey + 'Stats'].tacklesWon++;
+              recordPlayerAction(oppSideKey, defender, 'tacklesWon');
             }
           } else {
             defender.stats.interceptions++;
@@ -546,20 +558,15 @@ export function runRoundSimulation(state) {
           const passSuccessProb = 0.74 + ((passer.attributes.processing * 0.5 + passer.attributes.scanning * 0.5) * 0.002);
           if (Math.random() < Math.min(0.88, passSuccessProb)) {
             passer.stats.passesComp++;
-            if (userMatchReport) {
-              userMatchReport[sideKey + 'Stats'].passesComp++;
-              recordPlayerAction(sideKey, passer, 'passesComp');
-            }
+            report[sideKey + 'Stats'].passesComp++;
+            recordPlayerAction(sideKey, passer, 'passesComp');
           }
           return;
         }
 
-        // Progression Successful
         passer.stats.passesComp++;
-        if (userMatchReport) {
-          userMatchReport[sideKey + 'Stats'].passesComp++;
-          recordPlayerAction(sideKey, passer, 'passesComp');
-        }
+        report[sideKey + 'Stats'].passesComp++;
+        recordPlayerAction(sideKey, passer, 'passesComp');
 
         if (creator) creator.stats.keyPasses++;
 
@@ -570,16 +577,17 @@ export function runRoundSimulation(state) {
 
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
-        if (creator && Math.random() < 0.65) creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
+        if (creator && Math.random() < 0.65) {
+          creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
+          recordPlayerAction(sideKey, creator, 'xa', shotXg);
+        }
 
         if (isHome) hMatchXg += shotXg;
         else aMatchXg += shotXg;
 
-        if (userMatchReport) {
-          userMatchReport[sideKey + 'Stats'].shots++;
-          recordPlayerAction(sideKey, shooter, 'shots');
-          recordPlayerAction(sideKey, shooter, 'xg', shotXg);
-        }
+        report[sideKey + 'Stats'].shots++;
+        recordPlayerAction(sideKey, shooter, 'shots');
+        recordPlayerAction(sideKey, shooter, 'xg', shotXg);
 
         const gk = defUnits.gk;
         const shooterComposure = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
@@ -593,12 +601,10 @@ export function runRoundSimulation(state) {
           if (isBigChance) shooter.stats.bigChancesComp++;
           if (gk) gk.stats.shotsFaced++;
 
-          if (userMatchReport) {
-            userMatchReport[sideKey + 'Stats'].sot++;
-            recordPlayerAction(sideKey, shooter, 'goals');
-            if (creator && Math.random() < 0.65) recordPlayerAction(sideKey, creator, 'assists');
-            else if (passer && passer.id !== shooter.id && Math.random() < 0.15) recordPlayerAction(sideKey, passer, 'assists');
-          }
+          report[sideKey + 'Stats'].sot++;
+          recordPlayerAction(sideKey, shooter, 'goals');
+          if (creator && Math.random() < 0.65) recordPlayerAction(sideKey, creator, 'assists');
+          else if (passer && passer.id !== shooter.id && Math.random() < 0.15) recordPlayerAction(sideKey, passer, 'assists');
 
           if (creator && Math.random() < 0.65) creator.stats.assists += 1;
           else if (passer && passer.id !== shooter.id && Math.random() < 0.15) passer.stats.assists += 1;
@@ -609,56 +615,51 @@ export function runRoundSimulation(state) {
           shooter.stats.sot += 1;
           if (isBigChance) shooter.stats.bigChancesMissed++;
 
-          if (userMatchReport) {
-            userMatchReport[sideKey + 'Stats'].sot++;
-            if (gk) recordPlayerAction(oppSideKey, gk, 'saves');
-          }
-
+          report[sideKey + 'Stats'].sot++;
           if (gk) {
             gk.stats.saves += 1;
             gk.stats.shotsFaced++;
+            report[oppSideKey + 'Stats'].saves++;
+            recordPlayerAction(oppSideKey, gk, 'saves');
           }
         } else {
           if (isBigChance) shooter.stats.bigChancesMissed++;
         }
       };
 
-      // In-Match Substitution Injector
-      const performPitchSubstitutions = (team, units) => {
+      const performPitchSubstitutions = (team, units, side) => {
         const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !p.isGK);
         if (!bench.length) return;
-
-        // Sub 1-2 tired outfielders into match simulation units
         const numSubs = Math.min(bench.length, 2);
         for (let s = 0; s < numSubs; s++) {
           const freshSub = bench[s];
           ensurePlayerStats(freshSub);
 
-          // Replace an outfield unit
-          if (units.midfielders.length > 2) {
-            units.midfielders.pop();
+          let outgoing = null;
+          if (units.midfielders.length > 2) outgoing = units.midfielders.pop();
+          else if (units.defenders.length > 3) outgoing = units.defenders.pop();
+          else if (units.forwards.length > 1) outgoing = units.forwards.pop();
+
+          if (outgoing) {
             units.midfielders.push(freshSub);
-          } else if (units.defenders.length > 3) {
-            units.defenders.pop();
-            units.defenders.push(freshSub);
-          } else if (units.forwards.length > 1) {
-            units.forwards.pop();
-            units.forwards.push(freshSub);
+            const bucket = side === 'home' ? report.homePlayers : report.awayPlayers;
+            if (bucket[outgoing.id]) bucket[outgoing.id].minutes = 65;
+            initReportPlayer(side, freshSub, 'SUB', 25);
           }
         }
       };
 
-      // PHASE 1: Minutes 0 - 65 (First 70% of possessions with starting units)
+      // PHASE 1: Minutes 0 - 65
       const hPhase1 = Math.round(hPossessions * 0.70);
       const aPhase1 = Math.round(aPossessions * 0.70);
       for (let i = 0; i < hPhase1; i++) resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
       for (let i = 0; i < aPhase1; i++) resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
 
-      // PHASE 2: Tactical Subs at 65'
-      performPitchSubstitutions(homeTeam, hUnits);
-      performPitchSubstitutions(awayTeam, aUnits);
+      // PHASE 2: Substitutions
+      performPitchSubstitutions(homeTeam, hUnits, 'home');
+      performPitchSubstitutions(awayTeam, aUnits, 'away');
 
-      // PHASE 3: Minutes 65 - 90 (Remaining 30% of possessions with subs on pitch)
+      // PHASE 3: Minutes 65 - 90
       for (let i = hPhase1; i < hPossessions; i++) resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
       for (let i = aPhase1; i < aPossessions; i++) resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
 
@@ -667,8 +668,8 @@ export function runRoundSimulation(state) {
       fix.hxg = parseFloat(Math.max(0.1, hMatchXg).toFixed(1));
       fix.axg = parseFloat(Math.max(0.1, aMatchXg).toFixed(1));
       fix.played = true;
+      fix.report = report; // Stamped directly on the fixture object
 
-      // Clean Sheets for Starting Defenders & Goalkeeper
       if (aGoals === 0) {
         (homeTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => {
           if (p.isGK || ['CB', 'LB', 'RB'].includes(p.slotRole)) p.stats.cleanSheets++;
@@ -685,15 +686,6 @@ export function runRoundSimulation(state) {
 
       applyPlayerMinutes(homeTeam);
       applyPlayerMinutes(awayTeam);
-
-      // Attach In-Memory Match Report to State
-      if (isUserMatch && userMatchReport) {
-        userMatchReport.homeTeam.goals = hGoals;
-        userMatchReport.homeTeam.xg = fix.hxg;
-        userMatchReport.awayTeam.goals = aGoals;
-        userMatchReport.awayTeam.xg = fix.axg;
-        state.lastMatchReport = userMatchReport;
-      }
     });
   }
 
