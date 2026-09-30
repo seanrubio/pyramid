@@ -380,104 +380,103 @@ function runRoundSimulation() {
       let hGoals = 0;
       let aGoals = 0;
 
-      const getPaceMod = (t) => {
-        let p = 1.0;
-        if (t.tactics.mentality === 'attacking') p += 0.15;
-        if (t.tactics.mentality === 'overload') p += 0.25;
-        if (t.tactics.mentality === 'defensive') p -= 0.12;
-        if (t.tactics.mentality === 'park the bus') p -= 0.22;
-        if (t.tactics.press === 'gegenpress') p += 0.10;
-        if (t.tactics.press === 'low block') p -= 0.10;
-        return p;
+      // 1. MACRO SHOT BUDGET
+      // Real football: 20-26 total shots per match combined
+      const getTempoShots = (t) => {
+        let s = 11.5;
+        if (t.tactics.mentality === 'attacking') s += 1.5;
+        if (t.tactics.mentality === 'overload') s += 3.0;
+        if (t.tactics.mentality === 'defensive') s -= 1.5;
+        if (t.tactics.mentality === 'park the bus') s -= 3.0;
+        if (t.tactics.press === 'gegenpress') s += 1.0;
+        if (t.tactics.press === 'low block') s -= 1.0;
+        return s;
       };
 
-      const matchPace = Math.sqrt(getPaceMod(homeTeam) * getPaceMod(awayTeam));
-      // ~32 total entries into the final third per 90 mins
-      const totalPhases = Math.round(32 * matchPace);
+      // 2. MIDFIELD POWER SHARE (Dictates who gets what share of the shots)
+      const hMid = sampleChoice(hUnits.midfielders);
+      const aMid = sampleChoice(aUnits.midfielders);
 
-      for (let seq = 0; seq < totalPhases; seq++) {
-        // 1. Territorial Midfield Control
-        const hMid = sampleChoice(hUnits.midfielders);
-        const aMid = sampleChoice(aUnits.midfielders);
+      const hMidPwr = (hMid.attributes.scanning * 0.4 + hMid.attributes.processing * 0.4 + hMid.attributes.bioenergetics * 0.2) * 1.08;
+      const aMidPwr = (aMid.attributes.scanning * 0.4 + aMid.attributes.processing * 0.4 + aMid.attributes.bioenergetics * 0.2);
+      const homeShare = hMidPwr / (hMidPwr + aMidPwr);
 
-        const hMidPwr = (hMid.attributes.scanning * 0.4 + hMid.attributes.processing * 0.4 + hMid.attributes.bioenergetics * 0.2) * 1.06;
-        const aMidPwr = (aMid.attributes.scanning * 0.4 + aMid.attributes.processing * 0.4 + aMid.attributes.bioenergetics * 0.2);
+      const totalMatchShots = Math.round(getTempoShots(homeTeam) + getTempoShots(awayTeam));
+      const homeShotCount = Math.round(totalMatchShots * homeShare);
+      const awayShotCount = totalMatchShots - homeShotCount;
 
-        const isHomeAttacking = (Math.random() < (hMidPwr / (hMidPwr + aMidPwr)));
-        const attTeam = isHomeAttacking ? homeTeam : awayTeam;
-        const defTeam = isHomeAttacking ? awayTeam : homeTeam;
-        const attUnits = isHomeAttacking ? hUnits : aUnits;
-        const defUnits = isHomeAttacking ? aUnits : hUnits;
-
+      // Helper to resolve an individual shot event for a side
+      const simulateTeamShot = (attTeam, defTeam, attUnits, defUnits, isHome) => {
         const passer = sampleChoice(attUnits.midfielders);
         const defender = sampleChoice(defUnits.defenders);
 
+        // Realistic chance distribution across positions
         const pickShooter = () => {
           const roll = Math.random();
-          if (roll < 0.55 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
-          if (roll < 0.80 && attUnits.wideAttackers.length) return sampleChoice(attUnits.wideAttackers);
+          if (roll < 0.52 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
+          if (roll < 0.78 && attUnits.wideAttackers.length) return sampleChoice(attUnits.wideAttackers);
           return sampleChoice(attUnits.midfielders);
         };
 
         const shooter = pickShooter();
         let creator = (passer.id !== shooter.id) ? passer : null;
-        let shotXg = 0.0; // If 0, the attack ended without a shot
+        let shotXg = 0.08; // Average baseline shot xG in professional football
 
         const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
 
-        // 2. Duel Resolution (Filtered: Lost duels do NOT generate shots)
+        // 3. MICRO TACTICAL DUELS (Shapes shot quality between 0.03 and 0.42 xG)
         if (creationStyle === 'flank play') {
           const winger = sampleChoice(attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders);
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
           creator = winger;
 
-          const deliveryEdge = (winger.attributes.proprioception + winger.attributes.dynamicPower) - 
-                               (fullback.attributes.dynamicPower + fullback.attributes.grit);
+          const delivery = (winger.attributes.proprioception + winger.attributes.dynamicPower) -
+                           (fullback.attributes.dynamicPower + fullback.attributes.grit);
 
-          const aerialEdge = (shooter.morphology.heightCm * 0.3 + shooter.attributes.dynamicPower * 0.4) -
-                             (defender.morphology.heightCm * 0.3 + defender.attributes.dynamicPower * 0.4);
+          const aerial = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.4) -
+                         (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.4);
 
-          const netAdvantage = (deliveryEdge * 0.5 + aerialEdge * 0.5) + randomGaussian(0, 8);
+          const net = (delivery * 0.5 + aerial * 0.5) + randomGaussian(0, 8);
 
-          if (netAdvantage > 5) {
-            shotXg = Math.min(0.40, 0.20 + (netAdvantage * 0.006)); // Clean header / volley
-          } else if (netAdvantage > -4) {
-            shotXg = 0.08; // Contested header
-          } else {
-            // Tackled / cleared / overhit cross - NO SHOT
+          if (net > 6) {
+            shotXg = Math.min(0.38, 0.18 + (net * 0.005));
+          } else if (net < -4) {
+            shotXg = 0.04; // Contested / off-balance attempt
             defender.stats.tackles += 1;
+          } else {
+            shotXg = 0.10;
           }
 
         } else if (creationStyle === 'balls in behind') {
           let recoveryBonus = (defTeam.tactics.press === 'low block') ? 10 : 0;
-          const sprintEdge = (shooter.attributes.dynamicPower * 0.6 + shooter.attributes.bioenergetics * 0.4) -
-                             (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5 + recoveryBonus) +
-                             randomGaussian(0, 8);
+          const sprint = (shooter.attributes.dynamicPower * 0.6 + shooter.attributes.bioenergetics * 0.4) -
+                         (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5 + recoveryBonus) +
+                         randomGaussian(0, 8);
 
-          if (sprintEdge > 6) {
-            shotXg = Math.min(0.50, 0.28 + (sprintEdge * 0.007)); // Clean 1v1
-          } else if (sprintEdge > -3) {
-            shotXg = 0.09; // Contested shot under pressure
-          } else {
-            // Tracked down and stripped - NO SHOT
+          if (sprint > 6) {
+            shotXg = Math.min(0.42, 0.22 + (sprint * 0.006));
+          } else if (sprint < -4) {
+            shotXg = 0.04;
             defender.stats.tackles += 1;
+          } else {
+            shotXg = 0.11;
           }
 
         } else if (creationStyle === 'central creator') {
           const playmaker = sampleChoice(attUnits.playmakers.length ? attUnits.playmakers : attUnits.midfielders);
           creator = (playmaker.id !== shooter.id) ? playmaker : null;
 
-          const visionEdge = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) -
-                             (defender.attributes.scanning * 0.6 + defender.attributes.grit * 0.4) +
-                             randomGaussian(0, 8);
+          const vision = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) -
+                         (defender.attributes.scanning * 0.6 + defender.attributes.grit * 0.4) +
+                         randomGaussian(0, 8);
 
-          if (visionEdge > 5) {
-            shotXg = Math.min(0.44, 0.22 + (visionEdge * 0.006)); // Clean cutback
-          } else if (visionEdge > -4) {
-            shotXg = 0.08; // Rushed shot from edge of area
-          } else {
-            // Blocked / intercepted pass - NO SHOT
+          if (vision > 5) {
+            shotXg = Math.min(0.40, 0.20 + (vision * 0.005));
+          } else if (vision < -4) {
+            shotXg = 0.04;
             defender.stats.tackles += 1;
+          } else {
+            shotXg = 0.10;
           }
 
         } else {
@@ -485,54 +484,61 @@ function runRoundSimulation() {
           const creatorMid = sampleChoice(attUnits.midfielders);
           creator = (creatorMid.id !== shooter.id) ? creatorMid : null;
 
-          const comboEdge = (creatorMid.attributes.processing * 0.5 + shooter.attributes.proprioception * 0.5) -
-                            (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5) +
-                            randomGaussian(0, 8);
+          const combo = (creatorMid.attributes.processing * 0.5 + shooter.attributes.proprioception * 0.5) -
+                        (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5) +
+                        randomGaussian(0, 8);
 
-          if (comboEdge > 5) {
-            shotXg = Math.min(0.42, 0.21 + (comboEdge * 0.006));
-          } else if (comboEdge > -4) {
-            shotXg = 0.08;
-          } else {
-            // Closed down / tackled - NO SHOT
+          if (combo > 5) {
+            shotXg = Math.min(0.38, 0.19 + (combo * 0.005));
+          } else if (combo < -4) {
+            shotXg = 0.04;
             defender.stats.tackles += 1;
-          }
-        }
-
-        // 3. Shot Execution (Only runs when shotXg > 0)
-        if (shotXg > 0) {
-          shooter.stats.shots += 1;
-          shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
-          if (creator) {
-            creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
-          }
-
-          if (isHomeAttacking) hMatchXg += shotXg;
-          else aMatchXg += shotXg;
-
-          const gk = defUnits.gk;
-
-          const shooterSkill = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
-          const gkSkill = (gk.attributes.dynamicPower * 0.5 + gk.attributes.processing * 0.5);
-          const skillRatio = Math.max(0.85, Math.min(1.20, shooterSkill / Math.max(1, gkSkill)));
-
-          const goalProb = Math.max(0.02, Math.min(0.85, shotXg * skillRatio));
-
-          if (Math.random() < goalProb) {
-            shooter.stats.goals += 1;
-            if (creator) creator.stats.assists += 1;
-            if (isHomeAttacking) hGoals += 1;
-            else aGoals += 1;
           } else {
-            gk.stats.saves += 1;
+            shotXg = 0.09;
           }
         }
+
+        // 4. STAT ATTRIBUTION
+        shooter.stats.shots += 1;
+        shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
+        if (creator) {
+          creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
+        }
+
+        if (isHome) hMatchXg += shotXg;
+        else aMatchXg += shotXg;
+
+        // 5. GOAL RESOLUTION (Anchored directly to xG)
+        const gk = defUnits.gk;
+        const shooterComposure = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
+        const gkSkill = (gk.attributes.dynamicPower * 0.5 + gk.attributes.processing * 0.5);
+        const finishingEdge = Math.max(0.85, Math.min(1.20, shooterComposure / Math.max(1, gkSkill)));
+
+        const goalProb = Math.max(0.015, Math.min(0.80, shotXg * finishingEdge));
+
+        if (Math.random() < goalProb) {
+          shooter.stats.goals += 1;
+          if (creator) creator.stats.assists += 1;
+          if (isHome) hGoals += 1;
+          else aGoals += 1;
+        } else {
+          gk.stats.saves += 1;
+        }
+      };
+
+      // Run home team shots
+      for (let i = 0; i < homeShotCount; i++) {
+        simulateTeamShot(homeTeam, awayTeam, hUnits, aUnits, true);
+      }
+      // Run away team shots
+      for (let i = 0; i < awayShotCount; i++) {
+        simulateTeamShot(awayTeam, homeTeam, aUnits, hUnits, false);
       }
 
       fix.hg = hGoals;
       fix.ag = aGoals;
-      fix.hxg = parseFloat(Math.max(0.20, hMatchXg).toFixed(1));
-      fix.axg = parseFloat(Math.max(0.15, aMatchXg).toFixed(1));
+      fix.hxg = parseFloat(Math.max(0.2, hMatchXg).toFixed(1));
+      fix.axg = parseFloat(Math.max(0.2, aMatchXg).toFixed(1));
       fix.played = true;
 
       updateTableRecord(d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
