@@ -92,7 +92,7 @@ export function renderLeagueView(container, ctx) {
         <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           <strong style="color: ${isUser ? 'var(--accent)' : '#fff'}; cursor: pointer;" onclick="inspectTeam('${t.id}', 'squad')">${shortName}</strong>
         </span>
-        <span style="color: var(--text-muted); font-size: 10px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;">
+        <span style="color: var(--text-muted); font-size: 10px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;">
           ${t.name}
         </span>
         <div style="font-family: monospace; font-size: 11px; text-align: right; min-width: 70px;">
@@ -233,7 +233,7 @@ export function renderLeagueView(container, ctx) {
         <!-- Division Leaders Pod -->
         <div class="panel" style="padding: 10px 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <strong style="color: #fff; font-size: 12px;">DIV ${div} LEADERS</strong>
+            <strong style="color: #fff; font-size: 12px;">LEADERS</strong>
             <div style="display: flex; gap: 3px;">
               ${[
                 { key: 'boot', label: 'GOLDEN BOOT' },
