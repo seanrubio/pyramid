@@ -5,6 +5,7 @@ let state = null;
 let activeTab = 'squad';
 let tableDiv = 10;
 let viewedTeamId = null; // Current scouting context
+let viewedFixtureRound = null;
 let statsMetric = 'goals'; // 'goals' | 'assists' | 'tackles' | 'saves' | 'xg'
 
 let squadSort = { key: 'slot', asc: true };
@@ -188,6 +189,10 @@ function renderLayout() {
   const isOpponent = (currentTeam.id !== state.userTeamId);
   const isSeasonOver = state.round > state.maxRounds;
 
+  // Safe tactic label extraction to prevent template literal parsing collisions
+  const styleLabel = ((currentTeam && currentTeam.tactics && currentTeam.tactics.chanceCreation) ? currentTeam.tactics.chanceCreation : 'mixed').toUpperCase();
+  const pressLabel = ((currentTeam && currentTeam.tactics && currentTeam.tactics.press) ? currentTeam.tactics.press : 'mid block').toUpperCase();
+
   document.getElementById('app-root').innerHTML = `
     <!-- Top Global Bar -->
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
@@ -209,7 +214,7 @@ function renderLayout() {
         </div>
       </div>
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
-        ${['squad', 'tactics', 'fixtures', 'table', 'stats'].map(tab => `
+        ${['squad', 'tactics', 'fixtures', 'league', 'stats'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -221,7 +226,7 @@ function renderLayout() {
         <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
           <div style="font-size: 12px; color: #fbbf24;">
             Scouting: <strong style="color: #fff;">${currentTeam.name}</strong> (DIV${currentTeam.div}) 
-            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation || 'MIXED').toUpperCase()} /${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
+            <span style="color: var(--text-muted); margin-left: 8px;">[${styleLabel} /${pressLabel}]</span>
           </div>
           <button onclick="inspectTeam('${state.userTeamId}')" style="background: #2563eb; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer;">
             RETURN TO MY CLUB
@@ -258,7 +263,7 @@ function renderCurrentView() {
   if (activeTab === 'squad') renderSquadView(ws);
   else if (activeTab === 'tactics') renderTacticsView(ws);
   else if (activeTab === 'fixtures') renderFixturesView(ws);
-  else if (activeTab === 'table') renderTableView(ws);
+  else if (activeTab === 'league') renderLeagueView(ws);
   else if (activeTab === 'stats') renderStatsView(ws);
 }
 
@@ -658,8 +663,25 @@ function renderFixturesView(container) {
   `;
 }
 
-// --- LEAGUE TABLE ---
-function renderTableView(container) {
+// --- LEAGUE VIEW (SIDE-BY-SIDE STANDINGS & ROUND FIXTURES) ---
+function setLeagueDiv(d) {
+  tableDiv = d;
+  renderLeagueView(document.getElementById('view-workspace'));
+}
+
+function changeLeagueRound(delta) {
+  const maxR = state.maxRounds || 38;
+  const curr = viewedFixtureRound || Math.min(state.round, maxR);
+  const target = Math.max(1, Math.min(maxR, curr + delta));
+  viewedFixtureRound = target;
+  renderLeagueView(document.getElementById('view-workspace'));
+}
+
+function renderLeagueView(container) {
+  const maxR = state.maxRounds || 38;
+  const activeRound = viewedFixtureRound || Math.min(state.round, maxR);
+  viewedFixtureRound = activeRound;
+
   const rows = [...state.tables[tableDiv]].sort((a, b) => 
     b.pts - a.pts || 
     b.gd - a.gd || 
@@ -668,62 +690,112 @@ function renderTableView(container) {
     a.name.localeCompare(b.name)
   );
 
+  const divFixtures = state.fixtures[tableDiv] || [];
+  const roundMatches = divFixtures[activeRound - 1] || [];
+
   container.innerHTML = `
-    <div style="display: flex; gap: 4px; margin-bottom: 8px; overflow-x: auto;">
+    <!-- Division Selector -->
+    <div style="display: flex; gap: 4px; margin-bottom: 12px; overflow-x: auto;">
       ${Array.from({ length: 10 }, (_, i) => i + 1).map(d => `
-        <button onclick="setTableDiv(${d})" style="${tableDiv === d ? 'border-color: var(--accent); color: var(--accent);' : ''}">DIV ${d}</button>
+        <button onclick="setLeagueDiv(${d})" style="${tableDiv === d ? 'border-color: var(--accent); color: var(--accent);' : ''}">DIV ${d}</button>
       `).join('')}
     </div>
 
-    <div class="panel" style="overflow-x: auto;">
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 30px; text-align: center;">#</th>
-            <th>Club</th>
-            <th style="text-align: center;">P</th>
-            <th style="text-align: center;">W</th>
-            <th style="text-align: center;">D</th>
-            <th style="text-align: center;">L</th>
-            <th style="text-align: center;">GF</th>
-            <th style="text-align: center;">GA</th>
-            <th style="text-align: center;">GD</th>
-            <th style="text-align: center;">xG</th>
-            <th style="text-align: center;">xGA</th>
-            <th style="text-align: right;">PTS</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((r, idx) => `
-            <tr style="background: ${r.teamId === state.userTeamId ? 'rgba(88, 166, 255, 0.08)' : 'transparent'}">
-              <td style="text-align: center; color: var(--text-muted);">${idx + 1}</td>
-              <td>
-                <span onclick="inspectTeam('${r.teamId}', 'squad')" style="cursor: pointer; font-weight: 600; color: var(--accent); text-decoration: underline;">
-                  ${r.name}
-                </span>
-                ${r.teamId === state.userTeamId ? '<span style="font-size: 10px; color: var(--accent); margin-left: 4px;">(YOU)</span>' : ''}
-              </td>
-              <td style="text-align: center;">${r.p}</td>
-              <td style="text-align: center;">${r.w}</td>
-              <td style="text-align: center;">${r.d}</td>
-              <td style="text-align: center;">${r.l}</td>
-              <td style="text-align: center;">${r.gf}</td>
-              <td style="text-align: center;">${r.ga}</td>
-              <td style="text-align: center;">${r.gd}</td>
-              <td style="text-align: center; color: var(--text-muted);">${r.xg.toFixed(1)}</td>
-              <td style="text-align: center; color: var(--text-muted);">${r.xga.toFixed(1)}</td>
-              <td style="text-align: right; font-weight: 700; color: #fff;">${r.pts}</td>
+    <!-- Side-by-Side Flex Layout -->
+    <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
+      
+      <!-- LEFT PANEL: Standings Table -->
+      <div class="panel" style="flex: 1 1 580px; overflow-x: auto;">
+        <table style="width: 100%;">
+          <thead>
+            <tr>
+              <th style="width: 28px; text-align: center;">#</th>
+              <th>Club</th>
+              <th style="text-align: center; width: 34px;">P</th>
+              <th style="text-align: center; width: 34px;">W</th>
+              <th style="text-align: center; width: 34px;">D</th>
+              <th style="text-align: center; width: 34px;">L</th>
+              <th style="text-align: center; width: 34px;">GD</th>
+              <th style="text-align: center; width: 44px;">xGD</th>
+              <th style="text-align: right; width: 40px; font-weight: 700; color: #fff;">PTS</th>
             </tr>
-          `).join('')}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            ${rows.map((r, idx) => {
+              const isUser = (r.teamId === state.userTeamId);
+              return `
+                <tr style="background: ${isUser ? 'rgba(88, 166, 255, 0.08)' : 'transparent'};">
+                  <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${idx + 1}</td>
+                  <td>
+                    <span onclick="inspectTeam('${r.teamId}', 'squad')" 
+                          style="cursor: pointer; font-weight: ${isUser ? '700' : '400'}; color: var(--text); text-decoration: none;">
+                      ${r.name}
+                    </span>
+                  </td>
+                  <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${r.p}</td>
+                  <td style="text-align: center; font-size: 11px;">${r.w}</td>
+                  <td style="text-align: center; font-size: 11px;">${r.d}</td>
+                  <td style="text-align: center; font-size: 11px;">${r.l}</td>
+                  <td style="text-align: center; font-size: 11px; color: ${r.gd > 0 ? 'var(--green)' : r.gd < 0 ? 'var(--red)' : 'var(--text-muted)'};">${r.gd > 0 ? '+' : ''}${r.gd}</td>
+                  <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${r.xgd > 0 ? '+' : ''}${r.xgd.toFixed(1)}</td>
+                  <td style="text-align: right; font-weight: 700; color: #fff;">${r.pts}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- RIGHT PANEL: Round Fixtures Stack -->
+      <div class="panel" style="flex: 1 1 360px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">
+          <strong style="color: #fff; font-size: 12px; letter-spacing: 0.05em;">ROUND ${activeRound} FIXTURES</strong>
+          <div style="display: flex; gap: 4px;">
+            <button onclick="changeLeagueRound(-1)" style="padding: 2px 8px; font-size: 11px;" ${activeRound <= 1 ? 'disabled' : ''}>&lt;</button>
+            <button onclick="changeLeagueRound(1)" style="padding: 2px 8px; font-size: 11px;" ${activeRound >= maxR ? 'disabled' : ''}>&gt;</button>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          ${roundMatches.length === 0 ? `
+            <div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 16px;">No fixtures found.</div>
+          ` : roundMatches.map(m => {
+            const hTeam = state.teams[m.home];
+            const aTeam = state.teams[m.away];
+            const isUserMatch = (m.home === state.userTeamId || m.away === state.userTeamId);
+
+            let scoreText = 'vs';
+            if (m.played) {
+              scoreText = `${m.hg} -${m.ag}`;
+            }
+
+            return `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-radius: 4px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid ${isUserMatch ? 'rgba(88, 166, 255, 0.3)' : 'var(--border)'}; font-size: 12px;">
+                <div style="flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <span onclick="inspectTeam('${m.home}', 'squad')" 
+                        style="cursor: pointer; color: var(--text); text-decoration: none; font-weight: ${m.home === state.userTeamId ? '700' : '400'};">
+                    ${hTeam ? hTeam.name : 'Unknown'}
+                  </span>
+                </div>
+
+                <div style="min-width: 60px; text-align: center; font-family: monospace; font-weight: 700; color: ${m.played ? '#fff' : 'var(--text-muted)'};">
+                  ${scoreText}
+                </div>
+
+                <div style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <span onclick="inspectTeam('${m.away}', 'squad')" 
+                        style="cursor: pointer; color: var(--text); text-decoration: none; font-weight: ${m.away === state.userTeamId ? '700' : '400'};">
+                    ${aTeam ? aTeam.name : 'Unknown'}
+                  </span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
     </div>
   `;
-}
-
-function setTableDiv(d) {
-  tableDiv = d;
-  renderTableView(document.getElementById('view-workspace'));
 }
 
 // --- LEAGUE STATS & LEADERBOARDS VIEW ---
@@ -820,10 +892,9 @@ function renderStatsView(container) {
                   ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
                 </td>
                 <td>
-                  <span onclick="inspectTeam('${p.teamId}', 'squad')" style="cursor: pointer; color: var(--accent); text-decoration: underline;">
+                  <span onclick="inspectTeam('${p.teamId}', 'squad')" style="cursor: pointer; color: var(--text); text-decoration: none;">
                     ${p.teamName}
                   </span>
-                  ${isUserClub ? '<span style="font-size: 10px; color: var(--accent); margin-left: 4px;">(YOU)</span>' : ''}
                 </td>
                 <td style="color: var(--text-muted); font-size: 12px;">${p.archetypeName}</td>
                 <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
