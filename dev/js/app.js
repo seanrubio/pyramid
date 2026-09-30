@@ -2,7 +2,7 @@ import { BLUEPRINT_PRESETS } from './constants.js';
 import { createFullSquad, autoAssignLineup, generateFixtures, runRoundSimulation, resetSeasonClean } from './engine.js';
 import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup } from './ui/squadView.js';
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
-import { renderMatchView, changeMatchRound } from './ui/matchView.js';
+import { renderMatchView, changeMatchRound, resetToCurrentMatchRound } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
 import { renderLeagueView, setLeagueDiv, changeLeagueRound } from './ui/leagueView.js';
 import { renderStatsView, setStatsDiv, setStatsMetric } from './ui/statsView.js';
@@ -208,6 +208,7 @@ Object.assign(window, {
   changeMatchRound: (delta) => changeMatchRound(delta, context, renderLayout),
   setLeagueDiv: (d) => setLeagueDiv(d, context, renderLayout),
   changeLeagueRound: (delta) => changeLeagueRound(delta, context, renderLayout),
+  resetToCurrentMatchRound: () => resetToCurrentMatchRound(context, renderLayout),
   setStatsMetric: (m) => setStatsMetric(m, context, renderLayout),
   setStatsDiv: (d) => setStatsDiv(d, context, renderLayout)
 });
