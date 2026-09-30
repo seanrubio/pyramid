@@ -102,7 +102,7 @@ function initializeDefaultCareer() {
     };
   });
 
-  teams[userTeamId].squad.forEach(p => p.slot = 'RES');
+  teams[userTeamId].squad.forEach(p => p.slot = null);
   Object.values(teams).forEach(t => {
     if (!t.isUser) autoAssignLineup(context.DB, t);
   });
