@@ -216,23 +216,18 @@ export function renderSquadView(container, ctx) {
     `;
   }).join('');
 
-  container.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <div style="display: flex; gap: 3px;">
-          ${[
-            { key: 'general', label: 'GENERAL' },
-            { key: 'ovr', label: 'STATS (OVR)' },
-            { key: 'p90', label: 'STATS (P90)' }
-          ].map(tab => `
-            <button onclick="setSquadViewMode('${tab.key}')" style="padding: 2px 8px; font-size: 11px; font-weight: 700; ${ctx.squadViewMode === tab.key ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
-              ${tab.label}
-            </button>
-          `).join('')}
-        </div>
-        <span style="font-size: 11px; color: var(--text-muted);">
-          Lineup: <strong style="color: ${startersCount === 11 ? 'var(--green)' : 'var(--amber)'}">${startersCount}/11 Starters</strong> • Formation: ${team.formation}
-        </span>
+container.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <div style="display: flex; gap: 3px;">
+        ${[
+          { key: 'general', label: 'GENERAL' },
+          { key: 'ovr', label: 'STATS (OVR)' },
+          { key: 'p90', label: 'STATS (P90)' }
+        ].map(tab => `
+          <button onclick="setSquadViewMode('${tab.key}')" style="padding: 2px 8px; font-size: 11px; font-weight: 700; ${ctx.squadViewMode === tab.key ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
+            ${tab.label}
+          </button>
+        `).join('')}
       </div>
       ${isUser ? `<button onclick="autoPickLineup()">AUTO-PICK XI</button>` : ''}
     </div>
