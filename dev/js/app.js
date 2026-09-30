@@ -54,7 +54,7 @@ export function handleStartNewSeason() {
 
 export function resetGameDatabase() {
   if (confirm("Reset current career save and restart with defaults?")) {
-    localStorage.removeItem('apex_wpm_save_v1');
+    localStorage.removeItem('apex_wpm_save_dev');
     location.reload();
   }
 }
