@@ -108,16 +108,103 @@ function generatePlayer(isGK, div, natCode = null) {
   };
 }
 
-function createFullSquad(div, primaryCountryCode) {
+// --- engine.js (Blueprint-Aware Squad Generation) ---
+
+const BLUEPRINT_ARCHETYPE_PREFERENCES = {
+  'flank play': {
+    WING: ['speed_merchant', 'direct_winger'],
+    ST: ['target', 'poacher'],
+    FB: ['wing_back', 'inverted_fullback'],
+    MID: ['box_to_box', 'deep_lying_creator']
+  },
+  'balls in behind': {
+    ST: ['runner_in_behind', 'pressing_forward'],
+    WING: ['speed_merchant', 'inside_forward'],
+    MID: ['artist', 'deep_lying_creator'],
+    CB: ['sweeper_stopper', 'ball_playing_cb']
+  },
+  'central creator': {
+    MID: ['artist', 'deep_lying_creator', 'tempo_dictator'],
+    ST: ['false_nine', 'poacher'],
+    WING: ['inside_forward', 'wide_target'],
+    CB: ['ball_playing_cb', 'stopper']
+  },
+  'patient possession': {
+    MID: ['tempo_dictator', 'artist', 'deep_lying_creator'],
+    CB: ['ball_playing_cb'],
+    FB: ['inverted_fullback'],
+    ST: ['false_nine', 'target']
+  },
+  'gegenpress': {
+    MID: ['engine', 'ball_winner', 'box_to_box'],
+    ST: ['pressing_forward', 'runner_in_behind'],
+    WING: ['pressing_winger', 'direct_winger'],
+    CB: ['stopper', 'aggressive_stopper']
+  }
+};
+
+function createFullSquad(team) {
   const squad = [];
-  for (let i = 0; i < 3; i++) {
-    const nat = (Math.random() < 0.7) ? primaryCountryCode : null;
-    squad.push(generatePlayer(true, div, nat));
-  }
-  for (let i = 0; i < 20; i++) {
-    const nat = (Math.random() < 0.7) ? primaryCountryCode : null;
-    squad.push(generatePlayer(false, div, nat));
-  }
+  const div = team.div || 10;
+  const baseMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
+
+  // Positional skeleton for 23-man squad
+  const squadPlan = [
+    { role: 'GK', count: 2 },
+    { role: 'CB', count: 4 },
+    { role: 'FB', count: 4 },
+    { role: 'MID', count: 6 },
+    { role: 'WING', count: 4 },
+    { role: 'ST', count: 3 }
+  ];
+
+  // Tactical bias mapping
+  const style = team.tactics ? (team.tactics.chanceCreation || team.tactics.buildMid) : 'mixed';
+  const press = team.tactics ? team.tactics.press : 'mid block';
+  const targetPrefs = BLUEPRINT_ARCHETYPE_PREFERENCES[style] || 
+                      (press === 'gegenpress' ? BLUEPRINT_ARCHETYPE_PREFERENCES['gegenpress'] : null);
+
+  // Club recruitment coherence (70% well-aligned, 30% mixed/mismatched)
+  const recruitmentCoherence = 0.35 + (Math.random() * 0.45);
+
+  let squadIndex = 0;
+
+  squadPlan.forEach(group => {
+    for (let i = 0; i < group.count; i++) {
+      let chosenArchetype = null;
+
+      // Check if blueprint favors specific archetypes for this position
+      const favoredList = targetPrefs && targetPrefs[group.role];
+      if (favoredList && Math.random() < recruitmentCoherence) {
+        const matchingArchetypes = favoredList.filter(key => DB.archetypes[key]);
+        if (matchingArchetypes.length) {
+          chosenArchetype = sampleChoice(matchingArchetypes);
+        }
+      }
+
+      // Fallback: pick any archetype valid for this role
+      if (!chosenArchetype) {
+        const available = Object.keys(DB.archetypes).filter(key => DB.archetypes[key].pos === group.role);
+        chosenArchetype = available.length ? sampleChoice(available) : Object.keys(DB.archetypes)[0];
+      }
+
+      // Natural talent spine: assign 2-3 marquee players, core starters, and raw depth
+      let talentModifier = 0;
+      if (squadIndex === 2 || squadIndex === 10 || squadIndex === 20) {
+        // Spine standouts (Star striker / playmaker / defender)
+        talentModifier = 3.5; 
+      } else if (squadIndex >= 16) {
+        // Bench depth / developing reserves
+        talentModifier = -2.5;
+      }
+
+      const playerTierMean = baseMean + talentModifier;
+      const player = generatePlayer(chosenArchetype, playerTierMean, team.id);
+      squad.push(player);
+      squadIndex++;
+    }
+  });
+
   return squad;
 }
 
