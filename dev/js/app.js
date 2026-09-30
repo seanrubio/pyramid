@@ -5,7 +5,6 @@ import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView
 import { renderMatchView, changeMatchRound, resetToCurrentMatchRound, setMatchReportSide } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
 import { renderLeagueView, setLeagueDiv, changeLeagueRound, setLeagueLeaderTab } from './ui/leagueView.js';
-import { renderStatsView, updateScoutFilter, sortScout } from './ui/statsView.js';
 
 export const context = {
   DB: null,
@@ -145,7 +144,6 @@ export function renderLayout() {
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
       <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <!-- Active Team Indicator -->
           <strong style="color: #fff; font-size: 14px;">${activeTeam.name}</strong>
           <span style="color: var(--accent); font-size: 12px; font-weight: 700;">DIV ${activeTeam.div}</span>
           ${isViewingOtherClub ? `
@@ -167,7 +165,7 @@ export function renderLayout() {
         </div>
       </div>
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 6px;">
-        ${['squad', 'tactics', 'match', 'fixtures', 'league', 'stats'].map(tab => `
+        ${['squad', 'tactics', 'match', 'fixtures', 'league'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${context.activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -182,7 +180,6 @@ export function renderLayout() {
   else if (context.activeTab === 'match') renderMatchView(ws, context);
   else if (context.activeTab === 'fixtures') renderFixturesView(ws, context);
   else if (context.activeTab === 'league') renderLeagueView(ws, context);
-  else if (context.activeTab === 'stats') renderStatsView(ws, context);
 }
 
 Object.assign(window, {
@@ -202,9 +199,7 @@ Object.assign(window, {
   setMatchReportSide: (side) => setMatchReportSide(side, context, renderLayout),
   setLeagueDiv: (d) => setLeagueDiv(d, context, renderLayout),
   changeLeagueRound: (delta) => changeLeagueRound(delta, context, renderLayout),
-  setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout),
-  updateScoutFilter: (key, val) => updateScoutFilter(key, val, context, renderLayout),
-  sortScout: (key) => sortScout(key, context, renderLayout)
+  setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout)
 });
 
 async function boot() {
