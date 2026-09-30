@@ -349,7 +349,7 @@ function sampleChoice(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// --- SIMULATION ENGINE (BOTTOM-UP POSSESSION ATTRITION ENGINE) ---
+// --- engine.js (Replace runRoundSimulation) ---
 
 function runRoundSimulation() {
   if (state.round > state.maxRounds) {
@@ -380,124 +380,125 @@ function runRoundSimulation() {
       let hGoals = 0;
       let aGoals = 0;
 
-      // Base transition clock: Real football features ~48 to 54 possessions per team over 90 mins
+      // Realistic possession count: ~46 to 52 possessions per team
       const getTeamPossessions = (team) => {
-        let base = 50;
+        let base = 48;
         if (team.tactics.mentality === 'attacking') base += 3;
-        if (team.tactics.mentality === 'overload') base += 6;
+        if (team.tactics.mentality === 'overload') base += 5;
         if (team.tactics.mentality === 'defensive') base -= 3;
-        if (team.tactics.mentality === 'park the bus') base -= 6;
+        if (team.tactics.mentality === 'park the bus') base -= 5;
         if (team.tactics.press === 'gegenpress') base += 2;
         if (team.tactics.press === 'low block') base -= 2;
         return base;
       };
 
-      // Natural possession allocation influenced slightly by home advantage
-      const hPossCount = Math.round(getTeamPossessions(homeTeam) * 1.03);
+      const hPossCount = Math.round(getTeamPossessions(homeTeam) * 1.04); // 4% home territorial edge
       const aPossCount = Math.round(getTeamPossessions(awayTeam));
 
-      // Resolve a single possession sequence from first principles
       const resolvePossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
-        // --- PHASE 1: BUILD-UP & PROGRESSION ---
-        // Midfielder / pivot attempts to play through or over the opponent's first defensive wave
+        // --- 1. MIDFIELD PROGRESSION ---
+        // In real football, only ~30-35% of total possessions reach the final third
         const passer = sampleChoice(attUnits.midfielders);
         const marker = sampleChoice(defUnits.midfielders.concat(defUnits.defenders));
 
         const buildStyle = attTeam.tactics.buildMid || 'mixed';
         const pressStyle = defTeam.tactics.press || 'mid block';
 
-        let attBuildPower = (passer.attributes.scanning * 0.45 + passer.attributes.processing * 0.45 + passer.attributes.proprioception * 0.10);
-        let defPressPower = (marker.attributes.scanning * 0.35 + marker.attributes.dynamicPower * 0.35 + marker.attributes.grit * 0.30);
+        let attPass = (passer.attributes.scanning * 0.5 + passer.attributes.processing * 0.5);
+        let defPress = (marker.attributes.scanning * 0.4 + marker.attributes.dynamicPower * 0.3 + marker.attributes.grit * 0.3);
 
         if (buildStyle === 'patient possession') {
-          attBuildPower += (passer.attributes.proprioception * 0.15);
-          if (pressStyle === 'gegenpress') defPressPower *= 1.10;
+          attPass += 4;
+          if (pressStyle === 'gegenpress') defPress += 6;
         } else if (buildStyle === 'direct') {
-          attBuildPower = (passer.attributes.dynamicPower * 0.50 + passer.attributes.processing * 0.35 + passer.attributes.scanning * 0.15);
-          defPressPower = (marker.attributes.scanning * 0.45 + marker.attributes.regulation * 0.35 + marker.attributes.grit * 0.20);
+          attPass = (passer.attributes.dynamicPower * 0.6 + passer.attributes.processing * 0.4);
+          defPress = (marker.attributes.scanning * 0.6 + marker.attributes.regulation * 0.4);
         }
 
-        // Attrition Check 1: Normal teams advance ~45% - 60% of their possessions past midfield
-        const buildDelta = (attBuildPower - defPressPower) + randomGaussian(0, 14);
-        if (buildDelta < 0) {
+        // Steeper attrition threshold: Midfielders must cleanly win to enter the final third
+        const progressionRoll = (attPass - defPress) + randomGaussian(0, 10);
+        if (progressionRoll < 3) {
           marker.stats.tackles += 1;
-          return; // Possession broken up in midfield. Turn over, NO SHOT.
+          return; // Ball intercepted or recycled backwards. NO SHOT.
         }
 
-        // --- PHASE 2: PENETRATION & CHANCE CREATION DUEL ---
-        // Ball enters final third: creator attempts to carve out shooting space against the backline
+        // --- 2. FINAL THIRD PENETRATION & DUEL ---
+        // Defenses break up 60-70% of attacks before a clean shot is taken
         const defender = sampleChoice(defUnits.defenders);
         const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
 
         const pickShooter = () => {
           const roll = Math.random();
-          if (roll < 0.55 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
-          if (roll < 0.80 && attUnits.wideAttackers.length) return sampleChoice(attUnits.wideAttackers);
+          if (roll < 0.52 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
+          if (roll < 0.78 && attUnits.wideAttackers.length) return sampleChoice(attUnits.wideAttackers);
           return sampleChoice(attUnits.midfielders);
         };
 
         const shooter = pickShooter();
         let creator = (passer.id !== shooter.id) ? passer : null;
-        let duelAdvantage = 0;
+        let duelMargin = 0;
 
         if (creationStyle === 'flank play') {
           const winger = sampleChoice(attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders);
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
           creator = winger;
 
-          const deliveryEdge = (winger.attributes.proprioception * 0.5 + winger.attributes.dynamicPower * 0.5) -
-                               (fullback.attributes.dynamicPower * 0.5 + fullback.attributes.grit * 0.5);
+          const delivery = (winger.attributes.proprioception * 0.5 + winger.attributes.dynamicPower * 0.5) -
+                           (fullback.attributes.dynamicPower * 0.5 + fullback.attributes.grit * 0.5);
+          const aerial = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.4) -
+                         (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.4);
 
-          const aerialEdge = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.40 + shooter.attributes.grit * 0.35) -
-                             (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.40 + defender.attributes.grit * 0.35);
-
-          duelAdvantage = (deliveryEdge * 0.4 + aerialEdge * 0.6) + randomGaussian(0, 12);
+          duelMargin = (delivery * 0.5 + aerial * 0.5) + randomGaussian(0, 10);
 
         } else if (creationStyle === 'balls in behind') {
-          let recoveryBonus = (defTeam.tactics.press === 'low block') ? 14 : 0;
-          const sprintEdge = (shooter.attributes.dynamicPower * 0.60 + shooter.attributes.bioenergetics * 0.40) -
-                             (defender.attributes.dynamicPower * 0.50 + defender.attributes.scanning * 0.50 + recoveryBonus);
+          let recoveryBonus = (defTeam.tactics.press === 'low block') ? 12 : 0;
+          const sprint = (shooter.attributes.dynamicPower * 0.6 + shooter.attributes.bioenergetics * 0.4) -
+                         (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5 + recoveryBonus);
 
-          duelAdvantage = sprintEdge + randomGaussian(0, 12);
+          duelMargin = sprint + randomGaussian(0, 10);
 
         } else if (creationStyle === 'central creator') {
           const playmaker = sampleChoice(attUnits.playmakers.length ? attUnits.playmakers : attUnits.midfielders);
           creator = (playmaker.id !== shooter.id) ? playmaker : null;
 
-          const visionEdge = (playmaker.attributes.scanning * 0.50 + playmaker.attributes.processing * 0.50) -
-                             (defender.attributes.scanning * 0.60 + defender.attributes.grit * 0.40);
+          const vision = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) -
+                         (defender.attributes.scanning * 0.6 + defender.attributes.grit * 0.4);
 
-          duelAdvantage = visionEdge + randomGaussian(0, 12);
+          duelMargin = vision + randomGaussian(0, 10);
 
         } else {
           // Tiki-Taka / Combination
           const creatorMid = sampleChoice(attUnits.midfielders);
           creator = (creatorMid.id !== shooter.id) ? creatorMid : null;
 
-          const comboEdge = (creatorMid.attributes.processing * 0.50 + shooter.attributes.proprioception * 0.50) -
-                            (defender.attributes.scanning * 0.50 + defender.attributes.regulation * 0.50);
+          const combo = (creatorMid.attributes.processing * 0.5 + shooter.attributes.proprioception * 0.5) -
+                        (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5);
 
-          duelAdvantage = comboEdge + randomGaussian(0, 12);
+          duelMargin = combo + randomGaussian(0, 10);
         }
 
-        // Attrition Check 2: Normal teams complete ~40% - 50% of final-third penetrations into shots
-        if (duelAdvantage < -3) {
+        // Attrition Threshold 2: Most box entries are blocked, cleared, or forced wide
+        // Only duels that cleanly beat the backline generate shots
+        if (duelMargin < 0) {
           defender.stats.tackles += 1;
-          return; // Tackled, intercepted, or cleared in the box. NO SHOT.
+          return; // Tackled or cleared by defense. NO SHOT.
         }
 
-        // --- PHASE 3: SHOT GENERATION (Only reached if Phase 1 and 2 succeed) ---
-        // Shot quality (xG) is derived directly from how cleanly the box duel was won
-        let shotXg = 0.06; // Default: tight-angle or pressured shot
-        if (duelAdvantage > 12) {
-          shotXg = Math.min(0.48, 0.22 + ((duelAdvantage - 12) * 0.008)); // Clear-cut chance / 1v1 breakaway
-        } else if (duelAdvantage > 4) {
-          shotXg = 0.14; // Good open look in the box
+        // --- 3. SHOT GENERATION (Only ~5-8 per team per game) ---
+        let shotXg = 0.05; // Base: contested shot inside the area
+
+        if (duelMargin > 15) {
+          // Rare massive defensive collapse / clean breakaway (~5% of shots)
+          shotXg = Math.min(0.38, 0.22 + ((duelMargin - 15) * 0.005));
+        } else if (duelMargin > 6) {
+          // Solid open look (~25% of shots)
+          shotXg = 0.12;
         } else {
-          shotXg = 0.07; // Contested strike
+          // Contested strike under immediate pressure (~70% of shots)
+          shotXg = 0.05;
         }
 
-        // Attribute stats to the active players
+        // Stat recording
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
         if (creator) {
@@ -507,13 +508,13 @@ function runRoundSimulation() {
         if (isHome) hMatchXg += shotXg;
         else aMatchXg += shotXg;
 
-        // --- PHASE 4: FINISHING COMPOSURE VS GOALKEEPER ---
+        // --- 4. GOALKEEPER CONTEST ---
         const gk = defUnits.gk;
-        const shooterComposure = (shooter.attributes.processing * 0.50 + shooter.attributes.regulation * 0.50);
-        const gkSkill = (gk.attributes.dynamicPower * 0.40 + gk.attributes.processing * 0.40 + gk.attributes.regulation * 0.20);
+        const shooterComposure = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
+        const gkSkill = (gk.attributes.dynamicPower * 0.5 + gk.attributes.processing * 0.5);
+        const skillFactor = Math.max(0.85, Math.min(1.20, shooterComposure / Math.max(1, gkSkill)));
 
-        const skillFactor = Math.max(0.80, Math.min(1.25, shooterComposure / Math.max(1, gkSkill)));
-        const goalProb = Math.max(0.02, Math.min(0.85, shotXg * skillFactor));
+        const goalProb = Math.max(0.01, Math.min(0.80, shotXg * skillFactor));
 
         if (Math.random() < goalProb) {
           shooter.stats.goals += 1;
@@ -525,7 +526,7 @@ function runRoundSimulation() {
         }
       };
 
-      // Simulate natural possessions for both sides
+      // Run ~50 possessions per side
       for (let i = 0; i < hPossCount; i++) {
         resolvePossession(homeTeam, awayTeam, hUnits, aUnits, true);
       }
