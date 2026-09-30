@@ -85,11 +85,11 @@ function initializeDefaultCareer() {
       mentality: 'balanced',
       press: 'mid block',
       buildGk: 'mixed',
-      buildMid: 'patient possession',
-      chanceCreation: 'tiki-taka'
+      buildMid: 'mixed',
+      chanceCreation: 'mixed'
     },
     isUser: true,
-    squad: createFullSquad({ id: userTeamId, div: 10, country, tactics: { chanceCreation: 'tiki-taka', press: 'mid block' } })
+    squad: createFullSquad({ id: userTeamId, div: 10, country, tactics: {} })
   };
 
   const BLUEPRINT_PRESETS = {
