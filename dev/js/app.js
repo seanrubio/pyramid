@@ -2,21 +2,21 @@ import { BLUEPRINT_PRESETS } from './constants.js';
 import { createFullSquad, autoAssignLineup, generateFixtures, runRoundSimulation, resetSeasonClean } from './engine.js';
 import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadViewMode } from './ui/squadView.js';
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
-import { renderMatchView, changeMatchRound, resetToCurrentMatchRound } from './ui/matchView.js';
+import { renderMatchView, changeMatchRound, resetToCurrentMatchRound, setMatchReportSide } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
 import { renderLeagueView, setLeagueDiv, changeLeagueRound, setLeagueLeaderTab } from './ui/leagueView.js';
-import { renderStatsView, setStatsDiv, setStatsMetric } from './ui/statsView.js';
+import { renderStatsView, updateScoutFilter, sortScout } from './ui/statsView.js';
 
 export const context = {
   DB: null,
   state: null,
   activeTab: 'squad',
   squadViewMode: 'general',
+  matchReportSide: 'home',
   tableDiv: 10,
   viewedTeamId: null,
   viewedFixtureRound: null,
   viewedMatchRound: null,
-  statsMetric: 'goals',
   squadSort: { key: 'slot', asc: true },
   tableSort: { key: 'pts', asc: false }
 };
@@ -29,6 +29,8 @@ export function inspectTeam(teamId, targetTab = null) {
   if (!context.state.teams[teamId]) return;
   context.viewedTeamId = teamId;
   if (targetTab) context.activeTab = targetTab;
+  context.viewedMatchRound = null;
+  context.viewedFixtureRound = null;
   renderLayout();
 }
 
@@ -135,20 +137,23 @@ function initializeDefaultCareer() {
 
 export function renderLayout() {
   const userTeam = context.state.teams[context.state.userTeamId];
-  const currentTeam = context.state.teams[context.viewedTeamId] || userTeam;
-  const isOpponent = (currentTeam.id !== context.state.userTeamId);
+  const activeTeam = context.state.teams[context.viewedTeamId] || userTeam;
+  const isViewingOtherClub = (activeTeam.id !== context.state.userTeamId);
   const isSeasonOver = context.state.round > context.state.maxRounds;
-
-  const styleLabel = ((currentTeam?.tactics?.chanceCreation) || 'mixed').toUpperCase();
-  const pressLabel = ((currentTeam?.tactics?.press) || 'mid block').toUpperCase();
 
   document.getElementById('app-root').innerHTML = `
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
       <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <strong style="color: #fff; font-size: 13px;">${userTeam.name}</strong>
-          <span style="color: var(--accent);">DIV ${userTeam.div}</span>
-          <span style="color: var(--text-muted);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <!-- Active Team Indicator -->
+          <strong style="color: #fff; font-size: 14px;">${activeTeam.name}</strong>
+          <span style="color: var(--accent); font-size: 12px; font-weight: 700;">DIV ${activeTeam.div}</span>
+          ${isViewingOtherClub ? `
+            <button onclick="inspectTeam('${context.state.userTeamId}')" style="background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: var(--accent); padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700; cursor: pointer;">
+              RETURN TO ${userTeam.name.toUpperCase()}
+            </button>
+          ` : ''}
+          <span style="color: var(--text-muted); font-size: 12px; margin-left: 6px;">
             S${context.state.season} • ${isSeasonOver ? '<strong style="color: var(--accent);">SEASON COMPLETE</strong>' : `ROUND ${context.state.round}/${context.state.maxRounds}`}
           </span>
         </div>
@@ -161,26 +166,12 @@ export function renderLayout() {
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
       </div>
-      <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
+      <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 6px;">
         ${['squad', 'tactics', 'match', 'fixtures', 'league', 'stats'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${context.activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
     </header>
-
-    ${isOpponent ? `
-      <div style="background: #1f1d13; border-bottom: 1px solid #78350f; padding: 6px 16px;">
-        <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
-          <div style="font-size: 12px; color: #fbbf24;">
-            Scouting: <strong style="color: #fff;">${currentTeam.name}</strong> (DIV${currentTeam.div}) 
-            <span style="color: var(--text-muted); margin-left: 8px;">[${styleLabel} /${pressLabel}]</span>
-          </div>
-          <button onclick="inspectTeam('${context.state.userTeamId}')" style="background: #2563eb; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer;">
-            RETURN TO MY CLUB
-          </button>
-        </div>
-      </div>
-    ` : ''}
 
     <main style="max-width: 1200px; margin: 16px auto; padding: 0 16px;" id="view-workspace"></main>
   `;
@@ -194,7 +185,6 @@ export function renderLayout() {
   else if (context.activeTab === 'stats') renderStatsView(ws, context);
 }
 
-// Expose click-handlers to the window so inline HTML onclicks work without a bundler
 Object.assign(window, {
   switchTab,
   inspectTeam,
@@ -208,13 +198,13 @@ Object.assign(window, {
   updateFormation: (form) => updateFormation(form, context, renderLayout, saveGameState),
   setTactics: (k, v) => setTactics(k, v, context, renderLayout, saveGameState),
   changeMatchRound: (delta) => changeMatchRound(delta, context, renderLayout),
+  resetToCurrentMatchRound: () => resetToCurrentMatchRound(context, renderLayout),
+  setMatchReportSide: (side) => setMatchReportSide(side, context, renderLayout),
   setLeagueDiv: (d) => setLeagueDiv(d, context, renderLayout),
   changeLeagueRound: (delta) => changeLeagueRound(delta, context, renderLayout),
   setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout),
-  resetToCurrentMatchRound: () => resetToCurrentMatchRound(context, renderLayout),
-  setStatsMetric: (m) => setStatsMetric(m, context, renderLayout),
-  setStatsDiv: (d) => setStatsDiv(d, context, renderLayout)
-
+  updateScoutFilter: (key, val) => updateScoutFilter(key, val, context, renderLayout),
+  sortScout: (key) => sortScout(key, context, renderLayout)
 });
 
 async function boot() {
