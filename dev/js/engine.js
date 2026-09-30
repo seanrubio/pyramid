@@ -478,8 +478,18 @@ export function runRoundSimulation(state) {
   return true;
 }
 
+export function sortTableEntries(entries) {
+  return [...entries].sort((a, b) => {
+    if (b.pts !== a.pts) return b.pts - a.pts;
+    if (b.gd !== a.gd) return b.gd - a.gd;
+    if (b.gf !== a.gf) return b.gf - a.gf;
+    if (b.w !== a.w) return b.w - a.w;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export function updateTableRecord(state, div, teamId, gf, ga, xg, xga) {
-  const row = state.tables[div].find(r => r.teamId === teamId);
+  const row = state.tables[div]?.find(r => r.teamId === teamId);
   if (!row) return;
 
   row.p++;
@@ -490,9 +500,24 @@ export function updateTableRecord(state, div, teamId, gf, ga, xg, xga) {
   row.xga = parseFloat((row.xga + xga).toFixed(1));
   row.xgd = parseFloat((row.xg - row.xga).toFixed(1));
 
-  if (gf > ga) { row.w++; row.pts += 3; row.form.push('W'); }
-  else if (gf === ga) { row.d++; row.pts += 1; row.form.push('D'); }
-  else { row.l++; row.form.push('L'); }
+  if (!Array.isArray(row.form)) row.form = [];
+
+  if (gf > ga) {
+    row.w++;
+    row.pts += 3;
+    row.form.push('W');
+  } else if (gf === ga) {
+    row.d++;
+    row.pts += 1;
+    row.form.push('D');
+  } else {
+    row.l++;
+    row.form.push('L');
+  }
+
+  if (row.form.length > 5) {
+    row.form.shift();
+  }
 }
 
 export function applyPlayerMinutes(team) {
@@ -515,15 +540,49 @@ export function applyPlayerMinutes(team) {
 }
 
 export function resetSeasonClean(state) {
+  // 1. Identify Promoted & Relegated Clubs via Tiebreakers
+  const promotions = {}; // division -> array of 3 teamIds ascending to (div - 1)
+  const relegations = {}; // division -> array of 3 teamIds descending to (div + 1)
+
   for (let d = 1; d <= 10; d++) {
-    state.tables[d].forEach(r => {
-      r.p = 0; r.w = 0; r.d = 0; r.l = 0;
-      r.gf = 0; r.ga = 0; r.gd = 0; r.pts = 0;
-      r.xg = 0.0; r.xga = 0.0; r.xgd = 0.0;
-      r.form = [];
+    const sorted = sortTableEntries(state.tables[d]);
+    if (d > 1) {
+      promotions[d] = sorted.slice(0, 3).map(e => e.teamId);
+    }
+    if (d < 10) {
+      relegations[d] = sorted.slice(-3).map(e => e.teamId);
+    }
+  }
+
+  // 2. Reassign Team Division Properties
+  for (let d = 2; d <= 10; d++) {
+    (promotions[d] || []).forEach(teamId => {
+      state.teams[teamId].div = d - 1;
+    });
+  }
+  for (let d = 1; d <= 9; d++) {
+    (relegations[d] || []).forEach(teamId => {
+      state.teams[teamId].div = d + 1;
     });
   }
 
+  // 3. Dynamically Reconstruct Standings Tables for New Division Alignments
+  state.tables = {};
+  for (let d = 1; d <= 10; d++) {
+    state.tables[d] = Object.values(state.teams)
+      .filter(t => t.div === d)
+      .map(t => ({
+        teamId: t.id,
+        name: t.name,
+        p: 0, w: 0, d: 0, l: 0,
+        gf: 0, ga: 0, gd: 0,
+        pts: 0,
+        xg: 0.0, xga: 0.0, xgd: 0.0,
+        form: []
+      }));
+  }
+
+  // 4. Reset Player Seasonal Minutes & Outings
   Object.values(state.teams).forEach(t => {
     t.squad.forEach(p => {
       p.minutesPlayed = 0;
@@ -531,6 +590,7 @@ export function resetSeasonClean(state) {
     });
   });
 
+  // 5. Generate Fresh 38-Round Balanced Schedule & Increment Season
   state.fixtures = generateFixtures(state.teams);
   state.season++;
   state.round = 1;
