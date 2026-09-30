@@ -202,6 +202,7 @@ Object.assign(window, {
   handleStartNewSeason,
   resetGameDatabase,
   sortSquad: (key) => sortSquad(key, context, renderLayout),
+  setSquadViewMode: (mode) => setSquadViewMode(mode, context, renderLayout),
   handleSlotChange: (pid, slot) => handleSlotChange(pid, slot, context, renderLayout, saveGameState),
   autoPickLineup: () => autoPickLineup(context, renderLayout, saveGameState),
   updateFormation: (form) => updateFormation(form, context, renderLayout, saveGameState),
@@ -213,7 +214,7 @@ Object.assign(window, {
   resetToCurrentMatchRound: () => resetToCurrentMatchRound(context, renderLayout),
   setStatsMetric: (m) => setStatsMetric(m, context, renderLayout),
   setStatsDiv: (d) => setStatsDiv(d, context, renderLayout)
-  setSquadViewMode: (mode) => setSquadViewMode(mode, context, renderLayout),
+
 });
 
 async function boot() {
