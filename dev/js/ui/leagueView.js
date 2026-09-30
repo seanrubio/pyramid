@@ -1,10 +1,14 @@
+import { sortTableEntries } from '../engine.js';
+
 export function renderLeagueView(container, ctx) {
   const maxR = ctx.state.maxRounds || 38;
   const currentRound = Math.max(1, Math.min(ctx.state.round, maxR));
   const activeRound = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentRound;
+  const div = ctx.tableDiv;
 
-  const rows = [...ctx.state.tables[ctx.tableDiv]].sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || b.xgd - a.xgd || a.name.localeCompare(b.name));
-  const roundMatches = ctx.state.fixtures[ctx.tableDiv]?.[activeRound - 1] || [];
+  const rawTable = ctx.state.tables[div] || [];
+  const rows = sortTableEntries(rawTable);
+  const roundMatches = ctx.state.fixtures[div]?.[activeRound - 1] || [];
 
   container.innerHTML = `
     <div style="display: flex; gap: 4px; margin-bottom: 12px; overflow-x: auto;">
@@ -18,7 +22,7 @@ export function renderLeagueView(container, ctx) {
         <table>
           <thead>
             <tr>
-              <th style="width: 24px; text-align: center;">#</th>
+              <th style="width: 28px; text-align: center;">#</th>
               <th>Club</th>
               <th style="text-align: center; width: 28px;">P</th>
               <th style="text-align: center; width: 28px;">W</th>
@@ -33,9 +37,31 @@ export function renderLeagueView(container, ctx) {
           <tbody>
             ${rows.map((r, idx) => {
               const isUser = (r.teamId === ctx.state.userTeamId);
+              const rank = idx + 1;
+              const totalTeams = rows.length;
+
+              // Pro / Rel Zone Indicators
+              const isPromoted = div > 1 && rank <= 3;
+              const isRelegated = div < 10 && rank > totalTeams - 3;
+              const isChampion = div === 1 && rank === 1;
+
+              let zoneBorder = 'border-left: 3px solid transparent;';
+              let zoneBg = isUser ? 'background: rgba(88, 166, 255, 0.12);' : '';
+
+              if (isChampion) {
+                zoneBorder = 'border-left: 3px solid #e3b341;';
+                if (!isUser) zoneBg = 'background: rgba(227, 179, 65, 0.05);';
+              } else if (isPromoted) {
+                zoneBorder = 'border-left: 3px solid var(--green, #3fb950);';
+                if (!isUser) zoneBg = 'background: rgba(63, 185, 80, 0.05);';
+              } else if (isRelegated) {
+                zoneBorder = 'border-left: 3px solid var(--red, #f85149);';
+                if (!isUser) zoneBg = 'background: rgba(248, 81, 73, 0.05);';
+              }
+
               return `
-                <tr style="background: ${isUser ? 'rgba(88, 166, 255, 0.08)' : 'transparent'};">
-                  <td style="text-align: center; color: var(--text-muted);">${idx + 1}</td>
+                <tr style="${zoneBorder}${zoneBg}">
+                  <td style="text-align: center; color: var(--text-muted); font-weight: ${rank <= 3 \vert{}\vert{} isRelegated ? '700' : 'normal'};">${rank}</td>
                   <td><span onclick="inspectTeam('${r.teamId}', 'squad')" style="cursor: pointer; font-weight: ${isUser ? '700' : '500'};">${r.name}</span></td>
                   <td style="text-align: center; color: var(--text-muted);">${r.p}</td>
                   <td style="text-align: center;">${r.w}</td>
@@ -50,6 +76,24 @@ export function renderLeagueView(container, ctx) {
             }).join('')}
           </tbody>
         </table>
+
+        <!-- Pro / Rel Legend -->
+        <div style="display: flex; gap: 16px; padding: 10px 12px; font-size: 11px; border-top: 1px solid var(--border); color: var(--text-muted);">
+          ${div === 1 ? `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="display: inline-block; width: 10px; height: 10px; background: #e3b341; border-radius: 2px;"></span> Champions
+            </div>
+          ` : `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="display: inline-block; width: 10px; height: 10px; background: var(--green, #3fb950); border-radius: 2px;"></span> Promotion (Div ${div - 1})
+            </div>
+          `}
+          ${div < 10 ? `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="display: inline-block; width: 10px; height: 10px; background: var(--red, #f85149); border-radius: 2px;"></span> Relegation (Div ${div + 1})
+            </div>
+          ` : ''}
+        </div>
       </div>
 
       <div class="panel" style="padding: 10px;">
