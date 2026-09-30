@@ -220,8 +220,8 @@ function renderLayout() {
         <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
           <div style="font-size: 12px; color: #fbbf24;">
             Scouting: <strong style="color: #fff;">${currentTeam.name}</strong> (DIV${currentTeam.div}) 
-            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation || 'MIXED').toUpperCase()} / ${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
-              </div>
+            <span style="color: var(--text-muted); margin-left: 8px;">[${(currentTeam.tactics.chanceCreation \vert{}\vert{} 'MIXED').toUpperCase()} /${(currentTeam.tactics.press || 'MID BLOCK').toUpperCase()}]</span>
+          </div>
           <button onclick="inspectTeam('${state.userTeamId}')" style="background: #2563eb; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer;">
             RETURN TO MY CLUB
           </button>
@@ -278,7 +278,7 @@ function renderTraitBadges(traits = []) {
 
   return sorted.map(t => {
     const isAsset = t.startsWith('[+');
-    const label = t.replace(/[\[\]\+\-]/g, '');
+    const label = t.slice(2, -1);
     return `<span class="badge ${isAsset ? 'badge-asset' : 'badge-liability'}">${isAsset ? '+' : '-'}${label}</span>`;
   }).join('');
 }
@@ -348,10 +348,12 @@ function renderSquadView(container) {
             <th onclick="sortSquad('ip')" style="cursor: pointer; text-align: center; width: 35px;">IP</th>
             <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 35px;">OOP</th>
             <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 35px;">TR</th>
-            <th onclick="sortSquad('goals')" style="cursor: pointer; text-align: center; width: 35px;" title="Goals">G</th>
-            <th onclick="sortSquad('assists')" style="cursor: pointer; text-align: center; width: 35px;" title="Assists">A</th>
-            <th onclick="sortSquad('xg')" style="cursor: pointer; text-align: center; width: 45px;" title="Individual xG">xG</th>
-            <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
+            <th onclick="sortSquad('goals')" style="cursor: pointer; text-align: center; width: 30px;" title="Goals">G</th>
+            <th onclick="sortSquad('assists')" style="cursor: pointer; text-align: center; width: 30px;" title="Assists">A</th>
+            <th onclick="sortSquad('xg')" style="cursor: pointer; text-align: center; width: 40px;" title="Individual xG">xG</th>
+            <th onclick="sortSquad('tackles')" style="cursor: pointer; text-align: center; width: 32px;" title="Tackles">TK</th>
+            <th onclick="sortSquad('saves')" style="cursor: pointer; text-align: center; width: 32px;" title="Goalkeeper Saves">SV</th>
+            <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right; width: 45px;">Min</th>
           </tr>
         </thead>
         <tbody>
@@ -359,7 +361,7 @@ function renderSquadView(container) {
             const glyphs = parseGlyphs(p.phaseGlyphs);
             const heightStr = formatHeight(p.morphology.heightCm, units);
             const weightStr = formatWeight(p.morphology.weightKg, units);
-            const st = p.stats || { goals: 0, assists: 0, xg: 0.0 };
+            const st = p.stats || { goals: 0, assists: 0, xg: 0.0, tackles: 0, saves: 0 };
 
             let slotDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${p.slot}</span>`;
 
@@ -400,7 +402,9 @@ function renderSquadView(container) {
                 <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
                 <td style="text-align: center; font-weight: 700; color: #fff;">${st.goals}</td>
                 <td style="text-align: center; color: var(--accent);">${st.assists}</td>
-                <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${st.xg.toFixed(1)}</td>
+                <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${(st.xg || 0).toFixed(1)}</td>
+                <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${st.tackles || 0}</td>
+                <td style="text-align: center; color: ${p.isGK ? 'var(--accent)' : 'var(--text-muted)'}; font-size: 11px;">${p.isGK ? (st.saves || 0) : '-'}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
               </tr>
             `;
@@ -472,7 +476,7 @@ function sortSquad(key) {
       return getLastName(a.name).localeCompare(getLastName(b.name));
     }
 
-    if (['goals', 'assists', 'xg'].includes(squadSort.key)) {
+    if (['goals', 'assists', 'xg', 'tackles', 'saves'].includes(squadSort.key)) {
       const valA = (a.stats && a.stats[squadSort.key]) || 0;
       const valB = (b.stats && b.stats[squadSort.key]) || 0;
       return squadSort.asc ? valA - valB : valB - valA;
