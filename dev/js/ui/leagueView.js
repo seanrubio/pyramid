@@ -6,6 +6,8 @@ export function renderLeagueView(container, ctx) {
   const activeRound = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentRound;
   const div = ctx.tableDiv;
 
+  if (!ctx.leagueLeaderTab) ctx.leagueLeaderTab = 'boot';
+
   const rawTable = ctx.state.tables[div] || [];
   const rows = sortTableEntries(rawTable);
   const roundMatches = ctx.state.fixtures[div]?.[activeRound - 1] || [];
@@ -24,65 +26,86 @@ export function renderLeagueView(container, ctx) {
     });
   });
 
-  // Calculate Leaders for this Division
-  const topScorers = [...allDivPlayers]
-    .filter(x => (x.player.stats?.goals || 0) > 0)
-    .sort((a, b) => (b.player.stats.goals || 0) - (a.player.stats.goals || 0) || (b.player.stats.shots || 0) - (a.player.stats.shots || 0))
-    .slice(0, 5);
+  // Shorten names: "Nicolas Reyes" -> "N. Reyes"
+  const formatShortName = (fullName) => {
+    if (!fullName) return '';
+    const parts = fullName.trim().split(' ');
+    if (parts.length === 1) return parts[0];
+    return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+  };
 
-  const topPlaymakers = [...allDivPlayers]
-    .filter(x => ((x.player.stats?.assists || 0) + (x.player.stats?.keyPasses || 0)) > 0)
-    .sort((a, b) => (b.player.stats.assists || 0) - (a.player.stats.assists || 0) || (b.player.stats.keyPasses || 0) - (a.player.stats.keyPasses || 0))
-    .slice(0, 5);
+  // Determine Active Leaderboard Category
+  let leaderTitle = 'GOLDEN BOOT';
+  let leaderList = [];
+  let primaryGetter = (p) => p.stats?.goals || 0;
+  let subGetter = (p) => `${(p.stats?.xg || 0).toFixed(1)} xG`;
 
-  const topKeepers = [...allDivPlayers]
-    .filter(x => x.player.isGK && (x.player.stats?.apps || 0) > 0)
-    .sort((a, b) => (b.player.stats.cleanSheets || 0) - (a.player.stats.cleanSheets || 0) || (b.player.stats.saves || 0) - (a.player.stats.saves || 0))
-    .slice(0, 5);
+  if (ctx.leagueLeaderTab === 'assist') {
+    leaderTitle = 'ASSIST KING';
+    leaderList = [...allDivPlayers]
+      .filter(x => ((x.player.stats?.assists || 0) + (x.player.stats?.xa || 0)) > 0)
+      .sort((a, b) => 
+        (b.player.stats?.assists || 0) - (a.player.stats?.assists || 0) || 
+        (b.player.stats?.xa || 0) - (a.player.stats?.xa || 0)
+      )
+      .slice(0, 5);
+    primaryGetter = (p) => p.stats?.assists || 0;
+    subGetter = (p) => `${(p.stats?.xa || 0).toFixed(1)} xA`;
 
-  const renderLeaderPod = (title, items, valueLabel, subLabelKey = null) => {
-    if (!items.length) {
-      return `
-        <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px;">
-          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">${title}</div>
-          <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">No records yet</div>
-        </div>
-      `;
-    }
+  } else if (ctx.leagueLeaderTab === 'glove') {
+    leaderTitle = 'GOLDEN GLOVE';
+    leaderList = [...allDivPlayers]
+      .filter(x => x.player.isGK && (x.player.stats?.apps || 0) > 0)
+      .sort((a, b) => 
+        (b.player.stats?.cleanSheets || 0) - (a.player.stats?.cleanSheets || 0) || 
+        (b.player.stats?.saves || 0) - (a.player.stats?.saves || 0)
+      )
+      .slice(0, 5);
+    primaryGetter = (p) => p.stats?.cleanSheets || 0;
+    subGetter = (p) => {
+      const sf = p.stats?.shotsFaced || 0;
+      const sv = p.stats?.saves || 0;
+      const pct = sf > 0 ? ((sv / sf) * 100).toFixed(0) : '0';
+      return `${pct}% sv`;
+    };
 
-    const rowsHtml = items.map((item, idx) => {
-      const p = item.player;
-      const t = item.team;
-      const isUser = t.id === ctx.state.userTeamId;
-      const primaryVal = typeof valueLabel === 'function' ? valueLabel(p) : (p.stats[valueLabel] || 0);
-      const subVal = subLabelKey ? (typeof subLabelKey === 'function' ? subLabelKey(p) : p.stats[subLabelKey] || 0) : null;
+  } else {
+    // Golden Boot (Default)
+    leaderList = [...allDivPlayers]
+      .filter(x => (x.player.stats?.goals || 0) > 0)
+      .sort((a, b) => 
+        (b.player.stats?.goals || 0) - (a.player.stats?.goals || 0) || 
+        (b.player.stats?.xg || 0) - (a.player.stats?.xg || 0)
+      )
+      .slice(0, 5);
+  }
 
-      return `
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03);">
-          <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">
-            <span style="color: var(--text-muted); width: 14px; display: inline-block;">${idx + 1}.</span>
-            <strong style="color: ${isUser ? 'var(--accent)' : '#fff'}; cursor: pointer;" onclick="inspectTeam('${t.id}', 'squad')">${p.name}</strong>
-            <span style="color: var(--text-muted); font-size: 10px; margin-left: 4px;">(${t.name})</span>
-          </div>
-          <div style="font-family: monospace; font-size: 11px; text-align: right;">
-            <strong style="color: #fff;">${primaryVal}</strong>
-            ${subVal !== null ? `<span style="color: var(--text-muted); font-size: 10px;"> (${subVal})</span>` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
+  const leaderRowsHtml = leaderList.length ? leaderList.map((item, idx) => {
+    const p = item.player;
+    const t = item.team;
+    const isUser = t.id === ctx.state.userTeamId;
+    const shortName = formatShortName(p.name);
 
     return `
-      <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px;">
-        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
-          <span>${title}</span>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 3px;">
-          ${rowsHtml}
+      <div style="display: grid; grid-template-columns: 18px 1fr auto auto; align-items: center; gap: 6px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+        <span style="color: var(--text-muted); font-weight: 700;">${idx + 1}.</span>
+        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <strong style="color: ${isUser ? 'var(--accent)' : '#fff'}; cursor: pointer;" onclick="inspectTeam('${t.id}', 'squad')">${shortName}</strong>
+        </span>
+        <span style="color: var(--text-muted); font-size: 10px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;">
+          ${t.name}
+        </span>
+        <div style="font-family: monospace; font-size: 11px; text-align: right; min-width: 70px;">
+          <strong style="color: #fff;">${primaryGetter(p)}</strong>
+          <span style="color: var(--text-muted); font-size: 10px;"> (${subGetter(p)})</span>
         </div>
       </div>
     `;
-  };
+  }).join('') : `
+    <div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 11px; font-style: italic;">
+      No qualifying records yet this campaign.
+    </div>
+  `;
 
   const tableRowsHtml = rows.map((r, idx) => {
     const isUser = (r.teamId === ctx.state.userTeamId);
@@ -157,15 +180,15 @@ export function renderLeagueView(container, ctx) {
     const awayName = ctx.state.teams[m.away]?.name || 'Unknown';
 
     return `
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; border-radius: 4px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid var(--border);">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 3px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid var(--border);">
         <div style="flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px;">
           <span onclick="inspectTeam('${m.home}', 'squad')" style="cursor: pointer;">${homeName}</span>
         </div>
-        <div style="min-width: 76px; text-align: center; display: flex; flex-direction: column;">
+        <div style="min-width: 68px; text-align: center; display: flex; flex-direction: column;">
           ${m.played ? `
-            <span style="font-family: monospace; font-weight: 700; color: #fff;">${m.hg}&nbsp;–&nbsp;${m.ag}</span>
-            <span style="font-family: monospace; font-size: 10px; color: var(--text-muted);">${m.hxg.toFixed(1)}&nbsp;–&nbsp;${m.axg.toFixed(1)}</span>
-          ` : `<span style="font-family: monospace; font-size: 11px; color: var(--text-muted);">vs</span>`}
+            <span style="font-family: monospace; font-weight: 700; color: #fff; font-size: 11px;">${m.hg}–${m.ag}</span>
+            <span style="font-family: monospace; font-size: 9px; color: var(--text-muted);">${m.hxg.toFixed(1)}–${m.axg.toFixed(1)}</span>
+          ` : `<span style="font-family: monospace; font-size: 10px; color: var(--text-muted);">vs</span>`}
         </div>
         <div style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 6px;">
           <span onclick="inspectTeam('${m.away}', 'squad')" style="cursor: pointer;">${awayName}</span>
@@ -206,7 +229,28 @@ export function renderLeagueView(container, ctx) {
         </div>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <!-- Division Leaders Pod -->
+        <div class="panel" style="padding: 10px 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #fff; font-size: 12px;">DIV ${div} LEADERS</strong>
+            <div style="display: flex; gap: 3px;">
+              ${[
+                { key: 'boot', label: 'GOLDEN BOOT' },
+                { key: 'assist', label: 'ASSIST KING' },
+                { key: 'glove', label: 'GOLDEN GLOVE' }
+              ].map(tab => `
+                <button onclick="setLeagueLeaderTab('${tab.key}')" style="padding: 1px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; ${ctx.leagueLeaderTab === tab.key ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
+                  ${tab.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            ${leaderRowsHtml}
+          </div>
+        </div>
+
         <!-- Round Fixtures Box -->
         <div class="panel" style="padding: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
@@ -216,20 +260,8 @@ export function renderLeagueView(container, ctx) {
               <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${activeRound >= maxR ? 'disabled' : ''}>&gt;</button>
             </div>
           </div>
-          <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; flex-direction: column; gap: 3px;">
             ${fixturesHtml}
-          </div>
-        </div>
-
-        <!-- Division Leaders Pods -->
-        <div class="panel" style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
-          <div style="font-size: 12px; font-weight: 700; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
-            DIV ${div} LEADERS
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${renderLeaderPod('Goals (Golden Boot)', topScorers, 'goals', (p) => `${p.stats.shots || 0} sh`)}
-            ${renderLeaderPod('Playmakers (Assists / KP)', topPlaymakers, 'assists', (p) => `${p.stats.keyPasses || 0} kp`)}
-            ${renderLeaderPod('Goalkeepers (Clean Sheets / SV)', topKeepers, 'cleanSheets', (p) => `${p.stats.saves || 0} sv`)}
           </div>
         </div>
       </div>
@@ -239,6 +271,11 @@ export function renderLeagueView(container, ctx) {
 
 export function setLeagueDiv(d, ctx, renderLayout) {
   ctx.tableDiv = d;
+  renderLayout();
+}
+
+export function setLeagueLeaderTab(cat, ctx, renderLayout) {
+  ctx.leagueLeaderTab = cat;
   renderLayout();
 }
 
