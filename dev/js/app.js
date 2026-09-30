@@ -19,7 +19,7 @@ export const context = {
 };
 
 export function saveGameState() {
-  try { localStorage.setItem('apex_wpm_save_v1', JSON.stringify(context.state)); } catch(e) {}
+  try { localStorage.setItem('apex_wpm_save_dev', JSON.stringify(context.state)); } catch(e) {}
 }
 
 export function inspectTeam(teamId, targetTab = null) {
