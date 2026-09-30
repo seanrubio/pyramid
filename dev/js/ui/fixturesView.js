@@ -65,7 +65,7 @@ export function renderFixturesView(container, ctx) {
                   <td style="text-align: center; color: var(--text-muted);">${round}</td>
                   <td style="text-align: center;">${isHome ? '<strong style="color: var(--accent);">H</strong>' : 'A'}</td>
                   <td>
-                    ${opponent ? `<span onclick="inspectTeam('${opponent.id}', 'squad')" style="cursor: pointer; font-weight: 600; color: var(--accent); text-decoration: underline;">${opponent.name}</span>` : 'Unknown'}
+                    ${opponent ? `<span onclick="inspectTeam('${opponent.id}', 'squad')" style="cursor: pointer; font-weight: 500; color: var(--text, #fff); text-decoration: none;">${opponent.name}</span>` : 'Unknown'}
                   </td>
                   <td style="text-align: center;">${scoreDisplay}</td>
                   <td style="text-align: center;">${xgDisplay}</td>
