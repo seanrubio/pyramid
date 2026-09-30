@@ -389,10 +389,10 @@ export function runRoundSimulation(state) {
       const aPossessions = Math.round(48 * getPaceMod(awayTeam));
 
       const resolveTeamPossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
-        // 1. Distribute passers realistically across the pitch
+        // 1. Distribute passers realistically across the entire outfield
         const pickPasser = () => {
           const r = Math.random();
-          if (r < 0.22 && attUnits.defenders.length) return sampleChoice(attUnits.defenders);
+          if (r < 0.25 && attUnits.defenders.length) return sampleChoice(attUnits.defenders);
           if (r < 0.82 && attUnits.midfielders.length) return sampleChoice(attUnits.midfielders);
           if (attUnits.forwards.length) return sampleChoice(attUnits.forwards);
           return sampleChoice(attUnits.midfielders);
@@ -400,8 +400,6 @@ export function runRoundSimulation(state) {
 
         const passer = pickPasser();
         let defender = sampleChoice(defUnits.defenders);
-
-        // Track pass attempt initiating possession
         passer.stats.passes++;
 
         const pickShooter = () => {
@@ -417,32 +415,41 @@ export function runRoundSimulation(state) {
         const defPress = defTeam.tactics.press || 'mid block';
         let delta = 0;
 
-        if (creationStyle === 'flank play') {
-          // Crossers must be wide attackers or wide defenders (not central defenders)
+        // Crosses happen across ALL tactics whenever wide players get involved
+        const hasWideOutlet = attUnits.wideAttackers.length > 0 || attUnits.wideDefenders.length > 0;
+        const crossChance = (creationStyle === 'flank play') ? 0.65 : (hasWideOutlet ? 0.30 : 0.10);
+        const isCrossDelivery = Math.random() < crossChance;
+
+        if (isCrossDelivery && hasWideOutlet) {
           const widePool = attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.wideDefenders;
-          const crosser = widePool.length ? sampleChoice(widePool) : sampleChoice(attUnits.midfielders);
+          const crosser = sampleChoice(widePool);
           const fullback = defUnits.wideDefenders.length ? sampleChoice(defUnits.wideDefenders) : defender;
-          
           creator = (crosser.id !== shooter.id) ? crosser : null;
 
-          let flankBonus = 0;
-          if (defPress === 'low block') flankBonus = 6.0;
-          else if (defPress === 'mid block') flankBonus = 3.0;
-
+          let flankBonus = (defPress === 'low block') ? 6.0 : (defPress === 'mid block' ? 3.0 : 0);
           const deliveryEdge = (crosser.attributes.proprioception + crosser.attributes.dynamicPower + flankBonus) -
                                (fullback.attributes.dynamicPower + fullback.attributes.grit);
+          
           const aerialEdge = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.4) -
                              (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.4);
+          
           delta = (deliveryEdge * 0.4 + aerialEdge * 0.6);
 
-          // Track Flank Play: Crosses & Aerial Duels
+          // Track Crosses
           crosser.stats.crosses++;
-          if (deliveryEdge + randomGaussian(0, 8) >= 0) crosser.stats.crossesComp++;
+          const crossAccProb = 0.26 + (deliveryEdge * 0.005);
+          if (Math.random() < Math.max(0.15, Math.min(0.42, crossAccProb))) {
+            crosser.stats.crossesComp++;
+          }
 
+          // Track Aerial Duels (with contested variance)
           shooter.stats.aerialsContested++;
           defender.stats.aerialsContested++;
-          if (aerialEdge >= 0) shooter.stats.aerialsWon++;
-          else defender.stats.aerialsWon++;
+          if (aerialEdge + randomGaussian(0, 6) >= 0) {
+            shooter.stats.aerialsWon++;
+          } else {
+            defender.stats.aerialsWon++;
+          }
 
         } else if (creationStyle === 'balls in behind') {
           let depthDelta = 0;
@@ -464,10 +471,7 @@ export function runRoundSimulation(state) {
           creator = (candidate.id !== shooter.id) ? candidate : null;
           const playmaker = creator || passer;
 
-          let congestionPenalty = 0;
-          if (defPress === 'low block') congestionPenalty = 10.0;
-          else if (defPress === 'mid block') congestionPenalty = 5.0;
-
+          let congestionPenalty = (defPress === 'low block') ? 10.0 : (defPress === 'mid block' ? 5.0 : 0);
           const playmakerCreativeForce = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) - congestionPenalty;
           const defenderResistance = (defender.attributes.scanning * 0.4 + defender.attributes.grit * 0.3 + defender.attributes.regulation * 0.3);
           delta = (playmakerCreativeForce - defenderResistance);
@@ -486,17 +490,28 @@ export function runRoundSimulation(state) {
         // Attack Broken Up Prior to Shot
         if (Math.random() > shotProb) {
           if (Math.random() < 0.45) {
-            // Contested tackle
+            // Contested Ground Duel (Tackle Attempt)
             defender.stats.tackles++;
-            const tckEdge = (defender.attributes.grit * 0.5 + defender.attributes.dynamicPower * 0.5) -
-                            (shooter.attributes.proprioception * 0.6);
-            if (tckEdge + randomGaussian(0, 6) >= 0) {
+            
+            // Balanced tackle edge: defender grit/power vs attacker proprioception/power
+            const defTacklePower = (defender.attributes.grit * 0.55 + defender.attributes.dynamicPower * 0.45);
+            const attDribblePower = (shooter.attributes.proprioception * 0.65 + shooter.attributes.dynamicPower * 0.35);
+            const tckDelta = defTacklePower - attDribblePower;
+            
+            // Base ~60% tackle win rate, modified smoothly by attributes
+            const tackleWinProb = 0.60 + (tckDelta * 0.008);
+            if (Math.random() < Math.max(0.40, Math.min(0.80, tackleWinProb))) {
               defender.stats.tacklesWon++;
             }
           } else {
+            // Interception / Passing lane blocked
             defender.stats.interceptions++;
-            // Baseline passing progression before turnover
-            if (Math.random() < 0.60) passer.stats.passesComp++;
+          }
+
+          // Realistic circulating pass completion prior to turnover
+          const passSuccessProb = 0.74 + ((passer.attributes.processing * 0.5 + passer.attributes.scanning * 0.5) * 0.002);
+          if (Math.random() < Math.min(0.88, passSuccessProb)) {
+            passer.stats.passesComp++;
           }
           return;
         }
@@ -526,7 +541,6 @@ export function runRoundSimulation(state) {
         const goalProb = Math.max(0.015, Math.min(0.80, shotXg * finishingEdge));
 
         if (Math.random() < goalProb) {
-          // Goal Scored (Shot on Target)
           shooter.stats.goals += 1;
           shooter.stats.sot += 1;
           if (isBigChance) shooter.stats.bigChancesComp++;
@@ -538,7 +552,6 @@ export function runRoundSimulation(state) {
           if (isHome) hGoals += 1;
           else aGoals += 1;
         } else if (Math.random() < 0.55) {
-          // Saved by Keeper (Shot on Target)
           shooter.stats.sot += 1;
           if (isBigChance) shooter.stats.bigChancesMissed++;
 
@@ -547,7 +560,6 @@ export function runRoundSimulation(state) {
             gk.stats.shotsFaced++;
           }
         } else {
-          // Off Target or Blocked
           if (isBigChance) shooter.stats.bigChancesMissed++;
         }
       };
