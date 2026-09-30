@@ -29,12 +29,10 @@ export function renderMatchView(container, ctx) {
   const oppRank = sortedTable.findIndex(r => r.teamId === oppId) + 1;
   const oppRow = sortedTable.find(r => r.teamId === oppId) || { p: 0, w: 0, d: 0, l: 0, pts: 0, xg: 0, xga: 0, form: [] };
 
-  // Calculate per-game averages
   const oppP = Math.max(1, oppRow.p);
   const oppXgPerGame = oppRow.p > 0 ? (oppRow.xg / oppP).toFixed(2) : '0.00';
   const oppXgaPerGame = oppRow.p > 0 ? (oppRow.xga / oppP).toFixed(2) : '0.00';
 
-  // League Ranks for xG and xGA per match
   const xgSorted = [...rawTable].sort((a, b) => {
     const aVal = a.p > 0 ? (a.xg / a.p) : 0;
     const bVal = b.p > 0 ? (b.xg / b.p) : 0;
@@ -42,7 +40,6 @@ export function renderMatchView(container, ctx) {
   });
   const xgRank = xgSorted.findIndex(r => r.teamId === oppId) + 1;
 
-  // Lowest xGA per match is best defense (#1)
   const xgaSorted = [...rawTable].sort((a, b) => {
     const aVal = a.p > 0 ? (a.xga / a.p) : 999;
     const bVal = b.p > 0 ? (b.xga / b.p) : 999;
@@ -50,7 +47,6 @@ export function renderMatchView(container, ctx) {
   });
   const xgaRank = xgaSorted.findIndex(r => r.teamId === oppId) + 1;
 
-  // Tactical Breakdown & Controls
   const tactics = oppTeam.tactics || {};
   const formation = oppTeam.formation || '4-4-2 Flat';
   const blueprintName = (tactics.blueprint || 'Custom').replace(/_/g, ' ');
@@ -60,17 +56,15 @@ export function renderMatchView(container, ctx) {
   const buildMid = tactics.buildMid || 'mixed';
   const creation = tactics.chanceCreation || 'mixed';
 
-  // Helper to map slot codes to tactical roles
   const formRoles = FORMATIONS[oppTeam.formation] || FORMATIONS['4-4-2 Flat'];
   const getSlotRoleName = (p) => {
-    if (!p.slot || p.slot === 'RES') return 'Reserve';
+    if (!p.slot) return 'Reserve';
     if (p.slot.startsWith('B')) return `Bench (${p.slot})`;
     if (p.slot === 'S1') return 'GK';
     const slotIdx = parseInt(p.slot.replace('S', ''), 10) - 1;
     return formRoles[slotIdx] || 'Starter';
   };
 
-  // Top 3 Players by average attributes
   const calculatePillarAvg = (p) => {
     if (!p.attributes) return 0;
     const vals = Object.values(p.attributes);
@@ -81,7 +75,6 @@ export function renderMatchView(container, ctx) {
     .sort((a, b) => calculatePillarAvg(b) - calculatePillarAvg(a))
     .slice(0, 3);
 
-  // Form Badges
   const formList = oppRow.form && oppRow.form.length > 0 ? oppRow.form : ['-'];
   const formBadges = formList.map(res => {
     let color = 'var(--text-muted)';
@@ -91,6 +84,159 @@ export function renderMatchView(container, ctx) {
     else if (res === 'L') { color = 'var(--red, #f85149)'; bg = 'rgba(248, 81, 73, 0.15)'; }
     return `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; font-size: 11px; font-weight: 700; color: ${color}; background: ${bg};">${res}</span>`;
   }).join(' ');
+
+  // Helpers for In-Memory Match Report (Concluded match)
+  const rep = ctx.state.lastMatchReport;
+  const isViewingLatestReport = rep && rep.round === activeRound;
+
+  const renderPostMatchSection = () => {
+    if (!isViewingLatestReport) {
+      return `
+        <div class="panel" style="padding: 24px; text-align: center; margin-bottom: 16px;">
+          <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">FINAL RESULT</div>
+          <div style="font-size: 32px; font-weight: 800; font-family: monospace; color: #fff; margin-bottom: 4px;">
+            ${userFixture.hg} – ${userFixture.ag}
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); font-family: monospace;">
+            xG: ${userFixture.hxg.toFixed(1)} – ${userFixture.axg.toFixed(1)}
+          </div>
+        </div>
+      `;
+    }
+
+    const hStats = rep.homeStats;
+    const aStats = rep.awayStats;
+    const totalP = (hStats.passes + aStats.passes) || 1;
+    const hPoss = Math.round((hStats.passes / totalP) * 100);
+    const aPoss = 100 - hPoss;
+    const hCmp = hStats.passes > 0 ? Math.round((hStats.passesComp / hStats.passes) * 100) : 0;
+    const aCmp = aStats.passes > 0 ? Math.round((aStats.passesComp / aStats.passes) * 100) : 0;
+
+    const renderStatLine = (label, hVal, aVal) => `
+      <div style="display: grid; grid-template-columns: 45px 1fr 45px; align-items: center; gap: 8px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+        <span style="font-family: monospace; font-weight: 700; text-align: left; color: ${hVal > aVal ? '#fff' : 'var(--text-muted)'};">${hVal}</span>
+        <span style="color: var(--text-muted); text-align: center; font-size: 10px; text-transform: uppercase;">${label}</span>
+        <span style="font-family: monospace; font-weight: 700; text-align: right; color: ${aVal > hVal ? '#fff' : 'var(--text-muted)'};">${aVal}</span>
+      </div>
+    `;
+
+    const renderPlayerBoxRows = (playersMap) => {
+      const list = Object.values(playersMap);
+      if (!list.length) return `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 8px;">No data recorded</td></tr>`;
+
+      return list.map(p => {
+        const cmpStr = p.passes > 0 ? `${Math.round((p.passesComp / p.passes) * 100)}%` : '—';
+        return `
+          <tr>
+            <td style="color: var(--text-muted); font-size: 10px; width: 32px;">${p.slotRole}</td>
+            <td style="font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name}</td>
+            <td style="text-align: center; font-family: monospace; font-size: 11px; color: ${p.goals > 0 ? 'var(--green)' : 'var(--text-muted)'}; font-weight: ${p.goals > 0 ? '700' : 'normal'};">${p.goals || '—'}</td>
+            <td style="text-align: center; font-family: monospace; font-size: 11px; color: ${p.assists > 0 ? 'var(--accent)' : 'var(--text-muted)'};">${p.assists || '—'}</td>
+            <td style="text-align: center; font-family: monospace; font-size: 11px; color: var(--text-muted);">${p.shots || '—'}</td>
+            <td style="text-align: center; font-family: monospace; font-size: 11px; color: var(--text-muted);">${p.xg > 0 ? p.xg.toFixed(1) : '—'}</td>
+            <td style="text-align: center; font-family: monospace; font-size: 11px; color: var(--text-muted);">${cmpStr}</td>
+            <td style="text-align: center; font-family: monospace; font-size: 11px; color: var(--text-muted);">${p.tacklesWon || '—'}</td>
+            <td style="text-align: center; font-family: monospace; font-size: 11px; color: ${p.isGK ? 'var(--accent)' : 'var(--text-muted)'};">${p.saves || '—'}</td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    return `
+      <!-- Score Banner -->
+      <div class="panel" style="padding: 16px; margin-bottom: 16px; text-align: center; background: rgba(0,0,0,0.25);">
+        <div style="font-size: 10px; color: var(--text-muted); font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">
+          ROUND ${rep.round} FINAL
+        </div>
+        <div style="display: flex; justify-content: center; align-items: center; gap: 24px; margin-bottom: 6px;">
+          <div style="flex: 1; text-align: right;">
+            <strong style="font-size: 17px; color: ${isHome ? 'var(--accent)' : '#fff'};">${rep.homeTeam.name}</strong>
+          </div>
+          <div style="min-width: 90px; text-align: center;">
+            <span style="font-family: monospace; font-size: 26px; font-weight: 800; color: #fff; letter-spacing: 2px;">
+              ${rep.homeTeam.goals} – ${rep.awayTeam.goals}
+            </span>
+          </div>
+          <div style="flex: 1; text-align: left;">
+            <strong style="font-size: 17px; color: ${!isHome ? 'var(--accent)' : '#fff'};">${rep.awayTeam.name}</strong>
+          </div>
+        </div>
+        <div style="font-family: monospace; font-size: 11px; color: var(--text-muted);">
+          ${rep.homeTeam.xg.toFixed(1)} xG &nbsp;—&nbsp; ${rep.awayTeam.xg.toFixed(1)} xG
+        </div>
+      </div>
+
+      <!-- Comparison Stats + Box Scores Grid -->
+      <div style="display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;">
+        <!-- Match Stats Column -->
+        <div class="panel" style="padding: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+            MATCH TOTALS
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            ${renderStatLine('Possession', `${hPoss}%`, `${aPoss}%`)}
+            ${renderStatLine('Total Shots', hStats.shots, aStats.shots)}
+            ${renderStatLine('Shots on Target', hStats.sot, aStats.sot)}
+            ${renderStatLine('Expected Goals (xG)', rep.homeTeam.xg.toFixed(1), rep.awayTeam.xg.toFixed(1))}
+            ${renderStatLine('Passing Accuracy', `${hCmp}%`, `${aCmp}%`)}
+            ${renderStatLine('Tackles Won', hStats.tacklesWon, aStats.tacklesWon)}
+            ${renderStatLine('GK Saves', hStats.saves, aStats.saves)}
+          </div>
+        </div>
+
+        <!-- Player Box Score Column -->
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="panel" style="overflow-x: auto; padding: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+              ${rep.homeTeam.name}
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 32px;">Pos</th>
+                  <th>Player</th>
+                  <th style="text-align: center; width: 28px;">G</th>
+                  <th style="text-align: center; width: 28px;">A</th>
+                  <th style="text-align: center; width: 28px;">SH</th>
+                  <th style="text-align: center; width: 34px;">xG</th>
+                  <th style="text-align: center; width: 38px;">CMP%</th>
+                  <th style="text-align: center; width: 28px;">TK</th>
+                  <th style="text-align: center; width: 28px;">SV</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderPlayerBoxRows(rep.homePlayers)}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="panel" style="overflow-x: auto; padding: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+              ${rep.awayTeam.name}
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 32px;">Pos</th>
+                  <th>Player</th>
+                  <th style="text-align: center; width: 28px;">G</th>
+                  <th style="text-align: center; width: 28px;">A</th>
+                  <th style="text-align: center; width: 28px;">SH</th>
+                  <th style="text-align: center; width: 34px;">xG</th>
+                  <th style="text-align: center; width: 38px;">CMP%</th>
+                  <th style="text-align: center; width: 28px;">TK</th>
+                  <th style="text-align: center; width: 28px;">SV</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderPlayerBoxRows(rep.awayPlayers)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  };
 
   container.innerHTML = `
     <!-- Round Navigation Bar -->
@@ -132,18 +278,7 @@ export function renderMatchView(container, ctx) {
       </div>
     </div>
 
-    ${userFixture.played ? `
-      <!-- Concluded Match Summary -->
-      <div class="panel" style="padding: 24px; text-align: center; margin-bottom: 16px;">
-        <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">FINAL RESULT</div>
-        <div style="font-size: 32px; font-weight: 800; font-family: monospace; color: #fff; margin-bottom: 4px;">
-          ${userFixture.hg} –${userFixture.ag}
-        </div>
-        <div style="font-size: 12px; color: var(--text-muted); font-family: monospace;">
-          xG: ${userFixture.hxg.toFixed(1)} –${userFixture.axg.toFixed(1)}
-        </div>
-      </div>
-    ` : `
+    ${userFixture.played ? renderPostMatchSection() : `
       <!-- Opposition Scouting Report -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         <div class="panel" style="padding: 16px;">
@@ -168,7 +303,6 @@ export function renderMatchView(container, ctx) {
               <div style="display: flex; gap: 4px;">${formBadges}</div>
             </div>
 
-            <!-- Tactical Controls -->
             <div style="display: flex; justify-content: space-between; margin-top: 4px;">
               <span style="color: var(--text-muted);">Blueprint:</span>
               <strong style="color: #fff; text-transform: capitalize;">${blueprintName}</strong>
@@ -176,10 +310,6 @@ export function renderMatchView(container, ctx) {
             <div style="display: flex; justify-content: space-between;">
               <span style="color: var(--text-muted);">Formation:</span>
               <strong style="color: #fff;">${formation}</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span style="color: var(--text-muted);">Mentality:</span>
-              <strong style="color: #fff; text-transform: capitalize;">${mentality}</strong>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span style="color: var(--text-muted);">Defensive Line & Press:</span>
@@ -205,7 +335,7 @@ export function renderMatchView(container, ctx) {
             KEY PLAYERS TO WATCH
           </h3>
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${top3Players.map((p, idx) => {
+            ${top3Players.map((p) => {
               const posRole = getSlotRoleName(p);
               const archName = p.archetypeName || p.archetypeKey || 'Universal';
 
