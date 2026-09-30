@@ -128,13 +128,11 @@ function createFullSquad(team) {
     favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
   }
 
-  // 1. Generate 2 Goalkeepers
   for (let i = 0; i < 2; i++) {
     const gk = generatePlayer(true, div);
     squad.push(gk);
   }
 
-  // 2. Generate 21 Outfield Players
   for (let i = 0; i < 21; i++) {
     let archetypeKey;
     if (favoredPool && Math.random() < 0.65) {
@@ -373,6 +371,7 @@ function getPitchUnits(team) {
     gk: null,
     defenders: [],
     wideDefenders: [],
+    defensiveMidfielders: [],
     midfielders: [],
     wideAttackers: [],
     playmakers: [],
@@ -388,6 +387,9 @@ function getPitchUnits(team) {
     else if (['LB', 'RB'].includes(role)) {
       units.defenders.push(p);
       units.wideDefenders.push(p);
+    } else if (role === 'DM') {
+      units.defensiveMidfielders.push(p);
+      units.midfielders.push(p);
     } else if (['LM', 'RM', 'LW', 'RW'].includes(role)) {
       units.wideAttackers.push(p);
       units.midfielders.push(p);
@@ -462,7 +464,7 @@ function runRoundSimulation() {
 
       const resolveTeamPossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
         const passer = sampleChoice(attUnits.midfielders);
-        const defender = sampleChoice(defUnits.defenders);
+        let defender = sampleChoice(defUnits.defenders);
 
         const pickShooter = () => {
           const roll = Math.random();
@@ -474,11 +476,12 @@ function runRoundSimulation() {
         const shooter = pickShooter();
         let creator = (passer.id !== shooter.id) ? passer : null;
         const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
+        const defPress = defTeam.tactics.press || 'mid block';
 
         let delta = 0;
 
         if (creationStyle === 'flank play') {
-          // Cross can come from either a wide attacker or an overlapping wide defender
+          // Flank attacks bypass central congestion; exploit narrow defensive blocks
           const crossers = attUnits.wideAttackers.length ? attUnits.wideAttackers : attUnits.midfielders;
           const crosser = (Math.random() < 0.75 || !attUnits.wideDefenders.length) 
             ? sampleChoice(crossers) 
@@ -487,35 +490,59 @@ function runRoundSimulation() {
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
           creator = (crosser.id !== shooter.id) ? crosser : null;
 
-          const deliveryEdge = (crosser.attributes.proprioception + crosser.attributes.dynamicPower) -
+          // Compact defensive shapes leave space on the flanks (+5 to +8 exploit bonus)
+          let flankBonus = 0;
+          if (defPress === 'low block') flankBonus = 6.0;
+          else if (defPress === 'mid block') flankBonus = 3.0;
+
+          const deliveryEdge = (crosser.attributes.proprioception + crosser.attributes.dynamicPower + flankBonus) -
                                (fullback.attributes.dynamicPower + fullback.attributes.grit);
           const aerialEdge = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.4) -
                              (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.4);
           delta = (deliveryEdge * 0.4 + aerialEdge * 0.6);
 
         } else if (creationStyle === 'balls in behind') {
-          let lowBlockShield = (defTeam.tactics.press === 'low block') ? 12 : 0;
-          delta = (shooter.attributes.dynamicPower * 0.6 + shooter.attributes.bioenergetics * 0.4) -
-                  (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5 + lowBlockShield);
+          // Exploits high pressing lines heavily; shut down by deep low blocks
+          let depthDelta = 0;
+          if (defPress === 'low block') depthDelta = -14.0;
+          else if (defPress === 'gegenpress' || defPress === 'high press') depthDelta = 8.5;
+
+          delta = (shooter.attributes.dynamicPower * 0.6 + shooter.attributes.bioenergetics * 0.4 + depthDelta) -
+                  (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5);
 
         } else if (creationStyle === 'central creator') {
-          // 65% of chances route through designated playmakers, 35% through any midfielder
+          // Central Playmaker Screen: Check for Defensive Midfielders (DM) first
+          if (defUnits.defensiveMidfielders.length > 0 && Math.random() < 0.65) {
+            defender = sampleChoice(defUnits.defensiveMidfielders);
+          }
+
+          // 65% routes through primary playmakers, 35% through any midfielder
           const playmakerPool = (Math.random() < 0.65 && attUnits.playmakers.length) 
             ? attUnits.playmakers 
             : attUnits.midfielders;
           const candidate = sampleChoice(playmakerPool);
           creator = (candidate.id !== shooter.id) ? candidate : null;
-
           const playmaker = creator || passer;
-          delta = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) -
-                  (defender.attributes.scanning * 0.6 + defender.attributes.grit * 0.4);
+
+          // Central Congestion Penalty: Low & Mid blocks choke central passing lanes
+          let congestionPenalty = 0;
+          if (defPress === 'low block') congestionPenalty = 10.0;
+          else if (defPress === 'mid block') congestionPenalty = 5.0;
+
+          // Defending central play relies on reading lanes (scanning) and positioning/disruption (grit + regulation)
+          const playmakerCreativeForce = (playmaker.attributes.scanning * 0.5 + playmaker.attributes.processing * 0.5) - congestionPenalty;
+          const defenderResistance = (defender.attributes.scanning * 0.4 + defender.attributes.grit * 0.3 + defender.attributes.regulation * 0.3);
+
+          delta = (playmakerCreativeForce - defenderResistance);
 
         } else {
-          // Tiki-Taka / Combination
+          // Tiki-Taka / Combination: Needs composure & short processing under press
           const creatorMid = sampleChoice(attUnits.midfielders);
           creator = (creatorMid.id !== shooter.id) ? creatorMid : null;
+
+          let pressFriction = (defPress === 'gegenpress') ? 4.0 : 0;
           delta = (creatorMid.attributes.processing * 0.5 + shooter.attributes.proprioception * 0.5) -
-                  (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5);
+                  (defender.attributes.scanning * 0.5 + defender.attributes.regulation * 0.5 + pressFriction);
         }
 
         delta += randomGaussian(0, 10);
@@ -523,8 +550,6 @@ function runRoundSimulation() {
         const shotProb = 0.18 * sigmoid(delta * 0.08) / 0.5;
 
         if (Math.random() > shotProb) {
-          // Realism: Most failed possessions are loose balls/unforced errors.
-          // Only ~22% represent credited defensive tackles.
           if (Math.random() < 0.22) {
             defender.stats.tackles += 1;
           }
@@ -543,7 +568,6 @@ function runRoundSimulation() {
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
         
-        // Calibrated xA tracking
         if (creator && Math.random() < 0.65) {
           creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
         }
@@ -561,7 +585,6 @@ function runRoundSimulation() {
         if (Math.random() < goalProb) {
           shooter.stats.goals += 1;
           
-          // Real-world assist distribution: ~65% primary creator, occasional secondary pass
           if (creator && Math.random() < 0.65) {
             creator.stats.assists += 1;
           } else if (passer && passer.id !== shooter.id && Math.random() < 0.15) {
@@ -571,7 +594,6 @@ function runRoundSimulation() {
           if (isHome) hGoals += 1;
           else aGoals += 1;
         } else {
-          // Realism: Only ~55% of non-goal shots are on-target saves; remainder are off-target or blocked
           if (Math.random() < 0.55) {
             gk.stats.saves += 1;
           }
