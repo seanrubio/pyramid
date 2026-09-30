@@ -38,6 +38,13 @@ export function formatShortName(fullName) {
   return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : fullName;
 }
 
+export function getSlotRank(slot) {
+  if (!slot) return 999;
+  if (slot.startsWith('S')) return parseInt(slot.slice(1), 10);
+  if (slot.startsWith('B')) return 100 + parseInt(slot.slice(1), 10);
+  return 999;
+}
+
 export function renderSquadView(container, ctx) {
   const team = ctx.state.teams[ctx.viewedTeamId] || ctx.state.teams[ctx.state.userTeamId];
   const isUser = (team.id === ctx.state.userTeamId);
@@ -54,9 +61,7 @@ export function renderSquadView(container, ctx) {
   const playableSlots = [...starterSlots, ...benchSlots];
 
   const occupantMap = {};
-  team.squad.forEach(sqP => { if (sqP.slot && sqP.slot !== 'RES') occupantMap[sqP.slot] = sqP; });
-
-  const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
+  team.squad.forEach(sqP => { if (sqP.slot) occupantMap[sqP.slot] = sqP; });
 
   // Formatters: Convert 0 / 0.0 to em dash
   const formatVal = (val, isDecimal = false) => {
@@ -130,10 +135,23 @@ export function renderSquadView(container, ctx) {
     const st = p.stats || {};
     const mins = p.minutesPlayed || 0;
 
-    let slotDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${p.slot}</span>`;
+// Resolve display label for non-user squads or static text
+    let displaySlotLabel = '—';
+    if (p.slot) {
+      if (p.slot.startsWith('S')) {
+        const slotIdx = parseInt(p.slot.replace('S', ''), 10) - 1;
+        displaySlotLabel = formRoles[slotIdx] || 'SUB';
+      } else if (p.slot.startsWith('B')) {
+        const benchNum = p.slot.replace('B', '');
+        displaySlotLabel = `BN ${benchNum}`;
+      }
+    }
+
+    let slotDisplay = `<span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${displaySlotLabel}</span>`;
+
     if (isUser) {
       const optionsHtml = [
-        `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
+        `<option value="" ${!p.slot ? 'selected' : ''}>—</option>`,
         ...playableSlots.map(s => {
           const isCurrent = (p.slot === s.val);
           const occupant = occupantMap[s.val];
@@ -216,7 +234,7 @@ export function renderSquadView(container, ctx) {
     `;
   }).join('');
 
-container.innerHTML = `
+  container.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
       <div style="display: flex; gap: 3px;">
         ${[
@@ -255,12 +273,25 @@ export function handleSlotChange(pid, newSlot, ctx, renderLayout, saveGameState)
   const player = team.squad.find(p => p.id === pid);
   if (!player) return;
 
-  const oldSlot = player.slot;
-  if (newSlot !== 'RES') {
-    const occupant = team.squad.find(p => p.id !== pid && p.slot === newSlot);
+  const oldSlot = player.slot || null;
+  const targetSlot = newSlot || null;
+
+  if (targetSlot) {
+    const occupant = team.squad.find(p => p.id !== pid && p.slot === targetSlot);
     if (occupant) occupant.slot = oldSlot;
   }
-  player.slot = newSlot;
+  player.slot = targetSlot;
+
+  // Auto-sort by formation priority on change
+  ctx.squadSort = { key: 'slot', asc: true };
+  const getLastName = (fullName) => fullName.trim().split(/\s+/).pop().toLowerCase();
+  team.squad.sort((a, b) => {
+    const rA = getSlotRank(a.slot);
+    const rB = getSlotRank(b.slot);
+    if (rA !== rB) return rA - rB;
+    return getLastName(a.name).localeCompare(getLastName(b.name));
+  });
+
   saveGameState();
   renderLayout();
 }
@@ -268,6 +299,11 @@ export function handleSlotChange(pid, newSlot, ctx, renderLayout, saveGameState)
 export function autoPickLineup(ctx, renderLayout, saveGameState) {
   const team = ctx.state.teams[ctx.state.userTeamId];
   autoAssignLineup(ctx.DB, team);
+  
+  // Keep sorted after auto-pick
+  ctx.squadSort = { key: 'slot', asc: true };
+  team.squad.sort((a, b) => getSlotRank(a.slot) - getSlotRank(b.slot));
+
   saveGameState();
   renderLayout();
 }
@@ -280,7 +316,6 @@ export function sortSquad(key, ctx, renderLayout) {
   const team = ctx.state.teams[ctx.viewedTeamId] || ctx.state.teams[ctx.state.userTeamId];
   const GLYPH_WEIGHTS = { '+': 2, '✓': 1, '-': 0 };
   const getLastName = (fullName) => fullName.trim().split(/\s+/).pop().toLowerCase();
-  const getSlotRank = (slot) => slot.startsWith('S') ? parseInt(slot.slice(1), 10) : slot.startsWith('B') ? 100 + parseInt(slot.slice(1), 10) : 999;
 
   const getMetricVal = (p, k) => {
     const st = p.stats || {};
