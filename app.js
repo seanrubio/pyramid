@@ -1,15 +1,13 @@
-// --- NO-FRILLS UI CONTROLLER (QUALITATIVE SCOUTING LAYOUT V2) ---
+// --- NO-FRILLS UI CONTROLLER (QUALITATIVE SCOUTING & INDIVIDUAL STATS) ---
 
 let DB = null;
 let state = null;
 let activeTab = 'squad';
 let tableDiv = 10;
-let fixturesDiv = null;
 
 let squadSort = { key: 'slot', asc: true };
 let tableSort = { key: 'pts', asc: false };
 
-// Unit conversion helpers
 function formatHeight(cm, units = 'metric') {
   if (units === 'imperial') {
     const totalInches = Math.round(cm / 2.54);
@@ -37,7 +35,6 @@ async function boot() {
     if (saved) {
       state = JSON.parse(saved);
       if (!state.config) state.config = { units: 'imperial' };
-      if (!state.config.units) state.config.units = 'imperial';
       tableDiv = state.teams[state.userTeamId].div;
       renderLayout();
     } else {
@@ -84,15 +81,27 @@ function initializeDefaultCareer() {
       mentality: 'balanced',
       press: 'mid block',
       buildGk: 'mixed',
-      buildMid: 'mixed',
-      chanceCreation: 'mixed'
+      buildMid: 'patient possession',
+      chanceCreation: 'tiki-taka'
     },
     isUser: true,
     squad: createFullSquad(10, country)
   };
 
+  const BLUEPRINT_PRESETS = {
+    heavy_metal:        { mentality: 'attacking', press: 'gegenpress', buildGk: 'mixed', buildMid: 'direct', chanceCreation: 'balls in behind' },
+    possession_control: { mentality: 'attacking', press: 'high press', buildGk: 'short', buildMid: 'patient possession', chanceCreation: 'tiki-taka' },
+    underdog_pressing:  { mentality: 'balanced',  press: 'gegenpress', buildGk: 'long',  buildMid: 'direct', chanceCreation: 'balls in behind' },
+    direct_aerial:      { mentality: 'balanced',  press: 'mid block',  buildGk: 'long',  buildMid: 'direct', chanceCreation: 'flank play' },
+    safety_first:       { mentality: 'defensive', press: 'low block',  buildGk: 'mixed', buildMid: 'patient possession', chanceCreation: 'central creator' },
+    counter_attacking:  { mentality: 'defensive', press: 'low block',  buildGk: 'long',  buildMid: 'direct', chanceCreation: 'balls in behind' }
+  };
+
   DB.cities.forEach(city => {
     const tid = 'club_' + city.id;
+    const bpKey = city.blueprint || 'direct_aerial';
+    const preset = BLUEPRINT_PRESETS[bpKey] || BLUEPRINT_PRESETS.direct_aerial;
+
     teams[tid] = {
       id: tid,
       name: city.name,
@@ -102,12 +111,8 @@ function initializeDefaultCareer() {
       rep: city.rep,
       formation: '4-4-2 Flat',
       tactics: { 
-        blueprint: city.blueprint || 'direct_aerial',
-        mentality: 'balanced', 
-        press: 'mid block', 
-        buildGk: 'mixed', 
-        buildMid: 'mixed', 
-        chanceCreation: 'mixed' 
+        blueprint: bpKey,
+        ...preset
       },
       isUser: false,
       squad: createFullSquad(city.div, city.country)
@@ -181,7 +186,6 @@ function renderLayout() {
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
       </div>
-      <!-- Tab Strip -->
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
         ${['squad', 'tactics', 'fixtures', 'table'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
@@ -189,7 +193,6 @@ function renderLayout() {
       </div>
     </header>
 
-    <!-- Main Content Shell -->
     <main style="max-width: 1200px; margin: 16px auto; padding: 0 16px;" id="view-workspace"></main>
   `;
 
@@ -207,7 +210,7 @@ function handleSimRound() {
 }
 
 function handleStartNewSeason() {
-  if (confirm(`Conclude Season ${state.season} and begin Season ${state.season + 1}? All table records will reset for a fresh fixture calendar.`)) {
+  if (confirm(`Conclude Season ${state.season} and begin Season ${state.season + 1}? Table and player stats will reset for a new calendar.`)) {
     resetSeasonClean();
     renderLayout();
   }
@@ -229,7 +232,6 @@ function getSlotRank(slot) {
 
 function renderTraitBadges(traits = []) {
   if (!traits.length) return '<span style="color: var(--text-muted);">-</span>';
-  
   const sorted = [...traits].sort((a, b) => {
     const aIsPos = a.startsWith('[+');
     const bIsPos = b.startsWith('[+');
@@ -247,11 +249,7 @@ function renderTraitBadges(traits = []) {
 
 function parseGlyphs(phaseGlyphs = "✓ / ✓ / ✓") {
   const parts = phaseGlyphs.split('/').map(s => s.trim());
-  return {
-    ip: parts[0] || '✓',
-    oop: parts[1] || '✓',
-    tr: parts[2] || '✓'
-  };
+  return { ip: parts[0] || '✓', oop: parts[1] || '✓', tr: parts[2] || '✓' };
 }
 
 function renderGlyphCell(glyph) {
@@ -287,7 +285,6 @@ function renderSquadView(container) {
   });
 
   const startersCount = team.squad.filter(p => p.slot.startsWith('S')).length;
-
   const hUnit = units === 'imperial' ? 'FT' : 'CM';
   const wUnit = units === 'imperial' ? 'LB' : 'KG';
 
@@ -311,9 +308,12 @@ function renderSquadView(container) {
             <th onclick="sortSquad('heightCm')" style="cursor: pointer; text-align: center;">${hUnit}</th>
             <th onclick="sortSquad('weightKg')" style="cursor: pointer; text-align: center;">${wUnit}</th>
             <th>Traits</th>
-            <th onclick="sortSquad('ip')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort In Possession">IP</th>
-            <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Out of Possession">OOP</th>
-            <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 44px;" title="Sort Transitions">TR</th>
+            <th onclick="sortSquad('ip')" style="cursor: pointer; text-align: center; width: 35px;">IP</th>
+            <th onclick="sortSquad('oop')" style="cursor: pointer; text-align: center; width: 35px;">OOP</th>
+            <th onclick="sortSquad('tr')" style="cursor: pointer; text-align: center; width: 35px;">TR</th>
+            <th onclick="sortSquad('goals')" style="cursor: pointer; text-align: center; width: 35px;" title="Goals">G</th>
+            <th onclick="sortSquad('assists')" style="cursor: pointer; text-align: center; width: 35px;" title="Assists">A</th>
+            <th onclick="sortSquad('xg')" style="cursor: pointer; text-align: center; width: 45px;" title="Individual xG">xG</th>
             <th onclick="sortSquad('minutesPlayed')" style="cursor: pointer; text-align: right;">Min</th>
           </tr>
         </thead>
@@ -322,6 +322,7 @@ function renderSquadView(container) {
             const glyphs = parseGlyphs(p.phaseGlyphs);
             const heightStr = formatHeight(p.morphology.heightCm, units);
             const weightStr = formatWeight(p.morphology.weightKg, units);
+            const st = p.stats || { goals: 0, assists: 0, xg: 0.0 };
 
             const optionsHtml = [
               `<option value="RES" ${p.slot === 'RES' ? 'selected' : ''}>RES</option>`,
@@ -354,6 +355,9 @@ function renderSquadView(container) {
                 <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
                 <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
                 <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
+                <td style="text-align: center; font-weight: 700; color: #fff;">${st.goals}</td>
+                <td style="text-align: center; color: var(--accent);">${st.assists}</td>
+                <td style="text-align: center; color: var(--text-muted); font-size: 11px;">${st.xg.toFixed(1)}</td>
                 <td style="text-align: right; color: var(--text-muted);">${p.minutesPlayed}'</td>
               </tr>
             `;
@@ -421,12 +425,14 @@ function sortSquad(key) {
       const gB = parseGlyphs(b.phaseGlyphs)[squadSort.key];
       const valA = GLYPH_WEIGHTS[gA] ?? 1;
       const valB = GLYPH_WEIGHTS[gB] ?? 1;
-      
-      if (valA !== valB) {
-        return squadSort.asc ? valA - valB : valB - valA;
-      }
-      
+      if (valA !== valB) return squadSort.asc ? valA - valB : valB - valA;
       return getLastName(a.name).localeCompare(getLastName(b.name));
+    }
+
+    if (['goals', 'assists', 'xg'].includes(squadSort.key)) {
+      const valA = (a.stats && a.stats[squadSort.key]) || 0;
+      const valB = (b.stats && b.stats[squadSort.key]) || 0;
+      return squadSort.asc ? valA - valB : valB - valA;
     }
 
     if (squadSort.key === 'heightCm') {
@@ -450,7 +456,7 @@ function renderTacticsView(container) {
   const team = state.teams[state.userTeamId];
 
   container.innerHTML = `
-    <div class="panel" style="padding: 16px; max-width: 600px; display: flex; flex-direction: column; gap: 16px;">
+    <div class="panel" style="padding: 16px; max-width: 650px; display: flex; flex-direction: column; gap: 16px;">
       <div>
         <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">Formation Preset:</label>
         <select onchange="updateFormation(this.value)" style="width: 100%;">
@@ -459,11 +465,11 @@ function renderTacticsView(container) {
       </div>
 
       ${[
-        { label: 'Mentality (Affects Goals & Defense):', key: 'mentality', opts: ['park the bus', 'defensive', 'balanced', 'attacking', 'overload'] },
-        { label: 'Pressing Strategy:', key: 'press', opts: ['low block', 'mid block', 'high press', 'gegenpress'] },
+        { label: 'Mentality (Affects Event Volume & Numbers Forward):', key: 'mentality', opts: ['park the bus', 'defensive', 'balanced', 'attacking', 'overload'] },
+        { label: 'Pressing Strategy (Where Duels Occur):', key: 'press', opts: ['low block', 'mid block', 'high press', 'gegenpress'] },
         { label: 'Goalkeeper Distribution:', key: 'buildGk', opts: ['short', 'mixed', 'long'] },
-        { label: 'Midfield Build-up:', key: 'buildMid', opts: ['short', 'mixed', 'direct'] },
-        { label: 'Chance Creation:', key: 'chanceCreation', opts: ['work into box', 'mixed', 'cross heavy', 'shoot on sight'] }
+        { label: 'Midfield Build-up:', key: 'buildMid', opts: ['patient possession', 'mixed', 'direct'] },
+        { label: 'Chance Creation Style (Phase 3 Duel Routing):', key: 'chanceCreation', opts: ['tiki-taka', 'flank play', 'balls in behind', 'central creator'] }
       ].map(sec => `
         <div>
           <label style="display: block; margin-bottom: 4px; color: var(--text-muted);">${sec.label}</label>
@@ -515,7 +521,6 @@ function renderFixturesView(container) {
   container.innerHTML = `
     <div style="max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- Fixture Header -->
       <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
         <div>
           <strong style="color: #fff; font-size: 14px;">${userTeam.name.toUpperCase()} FIXTURES & RESULTS</strong>
@@ -523,7 +528,6 @@ function renderFixturesView(container) {
         </div>
       </div>
 
-      <!-- Schedule Table -->
       <div class="panel" style="overflow-x: auto;">
         <table>
           <thead>
