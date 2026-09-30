@@ -20,6 +20,42 @@ export function getPlayerPhaseScores(p) {
   return { ip, oop, tr };
 }
 
+export function createDefaultPlayerStats() {
+  return {
+    apps: 0,
+    goals: 0,
+    shots: 0,
+    sot: 0,
+    xg: 0.0,
+    bigChancesCreated: 0,
+    bigChancesComp: 0,
+    bigChancesMissed: 0,
+    assists: 0,
+    xa: 0.0,
+    passes: 0,
+    passesComp: 0,
+    keyPasses: 0,
+    crosses: 0,
+    crossesComp: 0,
+    tackles: 0,
+    tacklesWon: 0,
+    interceptions: 0,
+    aerialsContested: 0,
+    aerialsWon: 0,
+    saves: 0,
+    shotsFaced: 0,
+    cleanSheets: 0
+  };
+}
+
+export function ensurePlayerStats(p) {
+  if (!p.stats) p.stats = {};
+  const defaults = createDefaultPlayerStats();
+  for (const [k, v] of Object.entries(defaults)) {
+    if (p.stats[k] === undefined) p.stats[k] = v;
+  }
+}
+
 export function generatePlayer(DB, isGK, div, natCode = null) {
   const countryObj = natCode ? getCountry(DB, natCode) : DB.countries[Math.floor(Math.random() * DB.countries.length)];
   const pool = isGK ? GK_ARCHETYPES : OUTFIELD_ARCHETYPES;
@@ -69,7 +105,7 @@ export function generatePlayer(DB, isGK, div, natCode = null) {
     condition: 90 + Math.floor(Math.random() * 11),
     minutesPlayed: 0,
     slot: 'RES',
-    stats: { goals: 0, assists: 0, shots: 0, xg: 0.0, xa: 0.0, tackles: 0, saves: 0 }
+    stats: createDefaultPlayerStats()
   };
 }
 
@@ -290,8 +326,10 @@ export function getPitchUnits(team) {
   };
 
   starters.forEach(p => {
+    ensurePlayerStats(p);
     const slotIdx = parseInt(p.slot.replace('S', ''), 10) - 1;
     const role = formRoles[slotIdx] || 'CM';
+    p.slotRole = role;
 
     if (role === 'GK') units.gk = p;
     else if (role === 'CB') units.defenders.push(p);
@@ -354,6 +392,9 @@ export function runRoundSimulation(state) {
         const passer = sampleChoice(attUnits.midfielders);
         let defender = sampleChoice(defUnits.defenders);
 
+        // Track pass attempt initiating possession
+        passer.stats.passes++;
+
         const pickShooter = () => {
           const roll = Math.random();
           if (roll < 0.52 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
@@ -385,6 +426,15 @@ export function runRoundSimulation(state) {
           const aerialEdge = (shooter.morphology.heightCm * 0.25 + shooter.attributes.dynamicPower * 0.4) -
                              (defender.morphology.heightCm * 0.25 + defender.attributes.dynamicPower * 0.4);
           delta = (deliveryEdge * 0.4 + aerialEdge * 0.6);
+
+          // Track Flank Play: Crosses & Aerial Duels
+          crosser.stats.crosses++;
+          if (deliveryEdge >= 0) crosser.stats.crossesComp++;
+
+          shooter.stats.aerialsContested++;
+          defender.stats.aerialsContested++;
+          if (aerialEdge >= 0) shooter.stats.aerialsWon++;
+          else defender.stats.aerialsWon++;
 
         } else if (creationStyle === 'balls in behind') {
           let depthDelta = 0;
@@ -425,12 +475,27 @@ export function runRoundSimulation(state) {
         delta += randomGaussian(0, 10);
         const shotProb = 0.18 * sigmoid(delta * 0.08) / 0.5;
 
+        // Attack Broken Up Prior to Shot
         if (Math.random() > shotProb) {
-          if (Math.random() < 0.22) defender.stats.tackles += 1;
+          if (Math.random() < 0.40) {
+            defender.stats.tackles++;
+            defender.stats.tacklesWon++;
+          } else {
+            defender.stats.interceptions++;
+          }
           return;
         }
 
+        // Progression Successful -> Completed Pass & Shot Created
+        passer.stats.passesComp++;
+        if (creator) creator.stats.keyPasses++;
+
         let shotXg = delta > 12 ? Math.min(0.38, 0.18 + ((delta - 12) * 0.006)) : (delta > 2 ? 0.12 : 0.045);
+        const isBigChance = shotXg >= 0.30 || delta >= 12;
+
+        if (isBigChance && creator) {
+          creator.stats.bigChancesCreated++;
+        }
 
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
@@ -446,14 +511,29 @@ export function runRoundSimulation(state) {
         const goalProb = Math.max(0.015, Math.min(0.80, shotXg * finishingEdge));
 
         if (Math.random() < goalProb) {
+          // Goal Scored (Shot on Target)
           shooter.stats.goals += 1;
+          shooter.stats.sot += 1;
+          if (isBigChance) shooter.stats.bigChancesComp++;
+          if (gk) gk.stats.shotsFaced++;
+
           if (creator && Math.random() < 0.65) creator.stats.assists += 1;
           else if (passer && passer.id !== shooter.id && Math.random() < 0.15) passer.stats.assists += 1;
           
           if (isHome) hGoals += 1;
           else aGoals += 1;
         } else if (Math.random() < 0.55) {
-          gk.stats.saves += 1;
+          // Saved by Keeper (Shot on Target)
+          shooter.stats.sot += 1;
+          if (isBigChance) shooter.stats.bigChancesMissed++;
+
+          if (gk) {
+            gk.stats.saves += 1;
+            gk.stats.shotsFaced++;
+          }
+        } else {
+          // Off Target or Blocked
+          if (isBigChance) shooter.stats.bigChancesMissed++;
         }
       };
 
@@ -465,6 +545,22 @@ export function runRoundSimulation(state) {
       fix.hxg = parseFloat(Math.max(0.1, hMatchXg).toFixed(1));
       fix.axg = parseFloat(Math.max(0.1, aMatchXg).toFixed(1));
       fix.played = true;
+
+      // Clean Sheets for Starting Defenders & Goalkeeper
+      if (aGoals === 0) {
+        (homeTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => {
+          if (p.isGK || ['CB', 'LB', 'RB'].includes(p.slotRole)) {
+            p.stats.cleanSheets++;
+          }
+        });
+      }
+      if (hGoals === 0) {
+        (awayTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => {
+          if (p.isGK || ['CB', 'LB', 'RB'].includes(p.slotRole)) {
+            p.stats.cleanSheets++;
+          }
+        });
+      }
 
       updateTableRecord(state, d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
       updateTableRecord(state, d, awayTeam.id, aGoals, hGoals, fix.axg, fix.hxg);
@@ -531,18 +627,23 @@ export function applyPlayerMinutes(team) {
   const substitutedStarters = new Set(shuffledStarters.slice(0, maxSubs).map(p => p.id));
 
   starters.forEach(p => {
+    ensurePlayerStats(p);
+    p.stats.apps++;
     p.minutesPlayed += (substitutedStarters.has(p.id) ? 65 : 90);
   });
 
   for (let i = 0; i < maxSubs; i++) {
-    benchOutfield[i].minutesPlayed += 25;
+    const sub = benchOutfield[i];
+    ensurePlayerStats(sub);
+    sub.stats.apps++;
+    sub.minutesPlayed += 25;
   }
 }
 
 export function resetSeasonClean(state) {
   // 1. Identify Promoted & Relegated Clubs via Tiebreakers
-  const promotions = {}; // division -> array of 3 teamIds ascending to (div - 1)
-  const relegations = {}; // division -> array of 3 teamIds descending to (div + 1)
+  const promotions = {};
+  const relegations = {};
 
   for (let d = 1; d <= 10; d++) {
     const sorted = sortTableEntries(state.tables[d]);
@@ -586,7 +687,7 @@ export function resetSeasonClean(state) {
   Object.values(state.teams).forEach(t => {
     t.squad.forEach(p => {
       p.minutesPlayed = 0;
-      p.stats = { goals: 0, assists: 0, shots: 0, xg: 0.0, xa: 0.0, tackles: 0, saves: 0 };
+      p.stats = createDefaultPlayerStats();
     });
   });
 
