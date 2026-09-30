@@ -2,6 +2,7 @@ import { BLUEPRINT_PRESETS } from './constants.js';
 import { createFullSquad, autoAssignLineup, generateFixtures, runRoundSimulation, resetSeasonClean } from './engine.js';
 import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup } from './ui/squadView.js';
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
+import { renderMatchView, changeMatchRound, resetToCurrentMatchRound } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
 import { renderLeagueView, setLeagueDiv, changeLeagueRound } from './ui/leagueView.js';
 import { renderStatsView, setStatsDiv, setStatsMetric } from './ui/statsView.js';
@@ -13,6 +14,7 @@ export const context = {
   tableDiv: 10,
   viewedTeamId: null,
   viewedFixtureRound: null,
+  viewedMatchRound: null,
   statsMetric: 'goals',
   squadSort: { key: 'slot', asc: true },
   tableSort: { key: 'pts', asc: false }
@@ -32,6 +34,7 @@ export function inspectTeam(teamId, targetTab = null) {
 export function switchTab(tab) {
   context.activeTab = tab;
   if (tab === 'league') context.viewedFixtureRound = null;
+  if (tab === 'match') context.viewedMatchRound = null;
   renderLayout();
 }
 
@@ -39,6 +42,7 @@ export function handleSimRound() {
   if (runRoundSimulation(context.state)) {
     saveGameState();
     context.viewedFixtureRound = null;
+    context.viewedMatchRound = null;
     renderLayout();
   }
 }
@@ -48,6 +52,7 @@ export function handleStartNewSeason() {
     resetSeasonClean(context.state);
     saveGameState();
     context.viewedFixtureRound = null;
+    context.viewedMatchRound = null;
     renderLayout();
   }
 }
@@ -111,6 +116,7 @@ function initializeDefaultCareer() {
   context.tableDiv = 10;
   context.viewedTeamId = userTeamId;
   context.viewedFixtureRound = null;
+  context.viewedMatchRound = null;
 
   context.state = {
     season: 1,
@@ -155,7 +161,7 @@ export function renderLayout() {
         </div>
       </div>
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 4px;">
-        ${['squad', 'tactics', 'fixtures', 'league', 'stats'].map(tab => `
+        ${['squad', 'tactics', 'match', 'fixtures', 'league', 'stats'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${context.activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -181,12 +187,13 @@ export function renderLayout() {
   const ws = document.getElementById('view-workspace');
   if (context.activeTab === 'squad') renderSquadView(ws, context);
   else if (context.activeTab === 'tactics') renderTacticsView(ws, context);
+  else if (context.activeTab === 'match') renderMatchView(ws, context);
   else if (context.activeTab === 'fixtures') renderFixturesView(ws, context);
   else if (context.activeTab === 'league') renderLeagueView(ws, context);
   else if (context.activeTab === 'stats') renderStatsView(ws, context);
 }
 
-// Expose click-handlers to the window so your inline HTML onclicks work without a build step
+// Expose click-handlers to the window so inline HTML onclicks work without a bundler
 Object.assign(window, {
   switchTab,
   inspectTeam,
@@ -198,6 +205,8 @@ Object.assign(window, {
   autoPickLineup: () => autoPickLineup(context, renderLayout, saveGameState),
   updateFormation: (form) => updateFormation(form, context, renderLayout, saveGameState),
   setTactics: (k, v) => setTactics(k, v, context, renderLayout, saveGameState),
+  changeMatchRound: (delta) => changeMatchRound(delta, context, renderLayout),
+  resetToCurrentMatchRound: () => resetToCurrentMatchRound(context, renderLayout),
   setLeagueDiv: (d) => setLeagueDiv(d, context, renderLayout),
   changeLeagueRound: (delta) => changeLeagueRound(delta, context, renderLayout),
   setStatsMetric: (m) => setStatsMetric(m, context, renderLayout),
