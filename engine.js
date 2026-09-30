@@ -499,7 +499,10 @@ function runRoundSimulation() {
                   (defender.attributes.dynamicPower * 0.5 + defender.attributes.scanning * 0.5 + lowBlockShield);
 
         } else if (creationStyle === 'central creator') {
-          const playmakerPool = attUnits.playmakers.length ? attUnits.playmakers : attUnits.midfielders;
+          // 65% of chances route through designated playmakers, 35% through any midfielder
+          const playmakerPool = (Math.random() < 0.65 && attUnits.playmakers.length) 
+            ? attUnits.playmakers 
+            : attUnits.midfielders;
           const candidate = sampleChoice(playmakerPool);
           creator = (candidate.id !== shooter.id) ? candidate : null;
 
@@ -520,7 +523,11 @@ function runRoundSimulation() {
         const shotProb = 0.18 * sigmoid(delta * 0.08) / 0.5;
 
         if (Math.random() > shotProb) {
-          defender.stats.tackles += 1;
+          // Realism: Most failed possessions are loose balls/unforced errors.
+          // Only ~22% represent credited defensive tackles.
+          if (Math.random() < 0.22) {
+            defender.stats.tackles += 1;
+          }
           return;
         }
 
@@ -536,8 +543,8 @@ function runRoundSimulation() {
         shooter.stats.shots += 1;
         shooter.stats.xg = parseFloat((shooter.stats.xg + shotXg).toFixed(2));
         
-        // Realistic xA tracking (~68% potential assists)
-        if (creator && Math.random() < 0.68) {
+        // Calibrated xA tracking
+        if (creator && Math.random() < 0.65) {
           creator.stats.xa = parseFloat((creator.stats.xa + shotXg).toFixed(2));
         }
 
@@ -554,15 +561,20 @@ function runRoundSimulation() {
         if (Math.random() < goalProb) {
           shooter.stats.goals += 1;
           
-          // Real-world calibration: ~68% of goals are assisted
-          if (creator && Math.random() < 0.68) {
+          // Real-world assist distribution: ~65% primary creator, occasional secondary pass
+          if (creator && Math.random() < 0.65) {
             creator.stats.assists += 1;
+          } else if (passer && passer.id !== shooter.id && Math.random() < 0.15) {
+            passer.stats.assists += 1;
           }
           
           if (isHome) hGoals += 1;
           else aGoals += 1;
         } else {
-          gk.stats.saves += 1;
+          // Realism: Only ~55% of non-goal shots are on-target saves; remainder are off-target or blocked
+          if (Math.random() < 0.55) {
+            gk.stats.saves += 1;
+          }
         }
       };
 
