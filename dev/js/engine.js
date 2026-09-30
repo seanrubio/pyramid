@@ -104,7 +104,7 @@ export function generatePlayer(DB, isGK, div, natCode = null) {
     phaseGlyphs,
     condition: 90 + Math.floor(Math.random() * 11),
     minutesPlayed: 0,
-    slot: 'RES',
+    slot: null,
     stats: createDefaultPlayerStats()
   };
 }
@@ -215,7 +215,7 @@ export function evaluateSlotFit(DB, player, role, blueprintKey) {
 }
 
 export function autoAssignLineup(DB, team) {
-  team.squad.forEach(p => p.slot = 'RES');
+  team.squad.forEach(p => p.slot = null);
   const bpKey = team.tactics ? team.tactics.blueprint : null;
   const bp = (bpKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[bpKey] : null;
 
@@ -247,11 +247,11 @@ export function autoAssignLineup(DB, team) {
     chosen.slot = slot.slotCode;
   }
 
-  const remainingGKs = team.squad.filter(p => p.isGK && p.slot === 'RES');
+  const remainingGKs = team.squad.filter(p => p.isGK && !p.slot);
   let benchIndex = 1;
   if (remainingGKs.length > 0) remainingGKs[0].slot = `B${benchIndex++}`;
 
-  const remainingOutfield = team.squad.filter(p => !p.isGK && p.slot === 'RES');
+  const remainingOutfield = team.squad.filter(p => !p.isGK && !p.slot);
   remainingOutfield.sort((a, b) => {
     const scoreA = (a.attributes.bioenergetics * 0.4) + (a.attributes.grit * 0.3) + (a.attributes.stewardship * 0.3);
     const scoreB = (b.attributes.bioenergetics * 0.4) + (b.attributes.grit * 0.3) + (b.attributes.stewardship * 0.3);
@@ -264,7 +264,7 @@ export function autoAssignLineup(DB, team) {
 }
 
 export function validateLineup(team) {
-  const starters = team.squad.filter(p => p.slot.startsWith('S'));
+  const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
   if (starters.length !== 11) return { valid: false, error: `Lineup incomplete: ${starters.length}/11 starters assigned.` };
   const hasGk = starters.some(p => p.isGK);
   if (!hasGk) return { valid: false, error: 'No goalkeeper assigned in starting XI.' };
@@ -318,7 +318,7 @@ export function buildRoundRobin(teamIds) {
 
 export function getPitchUnits(team) {
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
-  const starters = team.squad.filter(p => p.slot.startsWith('S'));
+  const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
 
   const units = {
     gk: null, defenders: [], wideDefenders: [], defensiveMidfielders: [],
@@ -349,6 +349,24 @@ export function getPitchUnits(team) {
   return units;
 }
 
+export function applyMatchMinutes(team, matchSubs = []) {
+  const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
+  const subbedOutIds = new Set(matchSubs.map(s => s.outgoingId));
+  const subbedInIds = new Set(matchSubs.map(s => s.incomingId));
+
+  starters.forEach(p => {
+    ensurePlayerStats(p);
+    p.stats.apps++;
+    p.minutesPlayed += (subbedOutIds.has(p.id) ? 65 : 90);
+  });
+
+  (team.squad || []).filter(p => subbedInIds.has(p.id)).forEach(sub => {
+    ensurePlayerStats(sub);
+    sub.stats.apps++;
+    sub.minutesPlayed += 25;
+  });
+}
+
 export function runRoundSimulation(state) {
   if (state.round > state.maxRounds) {
     alert("Season finished! Click 'START NEW SEASON' to begin the next campaign.");
@@ -374,7 +392,6 @@ export function runRoundSimulation(state) {
 
       let hMatchXg = 0.0, aMatchXg = 0.0, hGoals = 0, aGoals = 0;
 
-      // Fixture-level report container (serialized directly on fix)
       const report = {
         homeStats: { shots: 0, sot: 0, passes: 0, passesComp: 0, tackles: 0, tacklesWon: 0, saves: 0 },
         awayStats: { shots: 0, sot: 0, passes: 0, passesComp: 0, tackles: 0, tacklesWon: 0, saves: 0 },
@@ -627,21 +644,38 @@ export function runRoundSimulation(state) {
         }
       };
 
+      // Explicit In-Match Substitution Tracking
+      const matchSubsRecord = { home: [], away: [] };
+
       const performPitchSubstitutions = (team, units, side) => {
         const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !p.isGK);
         if (!bench.length) return;
+
         const numSubs = Math.min(bench.length, 2);
+
         for (let s = 0; s < numSubs; s++) {
           const freshSub = bench[s];
           ensurePlayerStats(freshSub);
 
+          let targetUnitList = null;
+          if (units.midfielders.length > 2) targetUnitList = units.midfielders;
+          else if (units.defenders.length > 3) targetUnitList = units.defenders;
+          else if (units.forwards.length > 1) targetUnitList = units.forwards;
+
           let outgoing = null;
-          if (units.midfielders.length > 2) outgoing = units.midfielders.pop();
-          else if (units.defenders.length > 3) outgoing = units.defenders.pop();
-          else if (units.forwards.length > 1) outgoing = units.forwards.pop();
+          if (targetUnitList) {
+            // Find an actual starter who hasn't subbed in during this match
+            const starterIdx = targetUnitList.findIndex(p => p.slot && p.slot.startsWith('S'));
+            if (starterIdx !== -1) {
+              outgoing = targetUnitList.splice(starterIdx, 1)[0];
+              targetUnitList.push(freshSub);
+            }
+          }
 
           if (outgoing) {
-            units.midfielders.push(freshSub);
+            matchSubsRecord[side].push({ outgoingId: outgoing.id, incomingId: freshSub.id });
+
+            // Box Score Minutes: Outgoing starter gets 65', incoming sub gets 25'
             const bucket = side === 'home' ? report.homePlayers : report.awayPlayers;
             if (bucket[outgoing.id]) bucket[outgoing.id].minutes = 65;
             initReportPlayer(side, freshSub, 'SUB', 25);
@@ -684,8 +718,8 @@ export function runRoundSimulation(state) {
       updateTableRecord(state, d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
       updateTableRecord(state, d, awayTeam.id, aGoals, hGoals, fix.axg, fix.hxg);
 
-      applyPlayerMinutes(homeTeam);
-      applyPlayerMinutes(awayTeam);
+      applyMatchMinutes(homeTeam, matchSubsRecord.home);
+      applyMatchMinutes(awayTeam, matchSubsRecord.away);
     });
   }
 
@@ -735,32 +769,7 @@ export function updateTableRecord(state, div, teamId, gf, ga, xg, xga) {
   }
 }
 
-export function applyPlayerMinutes(team) {
-  const starters = team.squad.filter(p => p.slot.startsWith('S'));
-  const bench = team.squad.filter(p => p.slot.startsWith('B'));
-  const subEligibleStarters = starters.filter(p => p.slot !== 'S1');
-  const benchOutfield = bench.filter(p => !p.isGK);
-
-  const maxSubs = Math.min(subEligibleStarters.length, benchOutfield.length, 3 + Math.floor(Math.random() * 3));
-  const shuffledStarters = [...subEligibleStarters].sort(() => 0.5 - Math.random());
-  const substitutedStarters = new Set(shuffledStarters.slice(0, maxSubs).map(p => p.id));
-
-  starters.forEach(p => {
-    ensurePlayerStats(p);
-    p.stats.apps++;
-    p.minutesPlayed += (substitutedStarters.has(p.id) ? 65 : 90);
-  });
-
-  for (let i = 0; i < maxSubs; i++) {
-    const sub = benchOutfield[i];
-    ensurePlayerStats(sub);
-    sub.stats.apps++;
-    sub.minutesPlayed += 25;
-  }
-}
-
 export function resetSeasonClean(state) {
-  // 1. Identify Promoted & Relegated Clubs via Tiebreakers
   const promotions = {};
   const relegations = {};
 
@@ -774,7 +783,6 @@ export function resetSeasonClean(state) {
     }
   }
 
-  // 2. Reassign Team Division Properties
   for (let d = 2; d <= 10; d++) {
     (promotions[d] || []).forEach(teamId => {
       state.teams[teamId].div = d - 1;
@@ -786,7 +794,6 @@ export function resetSeasonClean(state) {
     });
   }
 
-  // 3. Dynamically Reconstruct Standings Tables for New Division Alignments
   state.tables = {};
   for (let d = 1; d <= 10; d++) {
     state.tables[d] = Object.values(state.teams)
@@ -802,7 +809,6 @@ export function resetSeasonClean(state) {
       }));
   }
 
-  // 4. Reset Player Seasonal Minutes & Outings
   Object.values(state.teams).forEach(t => {
     t.squad.forEach(p => {
       p.minutesPlayed = 0;
@@ -810,7 +816,6 @@ export function resetSeasonClean(state) {
     });
   });
 
-  // 5. Generate Fresh 38-Round Balanced Schedule & Increment Season
   state.fixtures = generateFixtures(state.teams);
   state.season++;
   state.round = 1;
