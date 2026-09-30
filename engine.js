@@ -1,4 +1,4 @@
-// --- SIMULATION ENGINE (DISCRETE PLAYER-LEVEL DUEL REFACTOR) ---
+// --- SIMULATION ENGINE (DISCRETE PLAYER-LEVEL DUEL ENGINE) ---
 
 const FORMATIONS = {
   '4-4-2 Flat': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'],
@@ -301,7 +301,6 @@ function buildRoundRobin(teamIds) {
   return rounds;
 }
 
-// Map starter slots to unit groups
 function getPitchUnits(team) {
   const formRoles = FORMATIONS[team.formation] || FORMATIONS['4-4-2 Flat'];
   const starters = team.squad.filter(p => p.slot.startsWith('S'));
@@ -350,7 +349,6 @@ function sampleChoice(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// --- DISCRETE MATCH RESOLUTION ENGINE ---
 function runRoundSimulation() {
   if (state.round > state.maxRounds) {
     alert("Season finished! Click 'START NEW SEASON' to begin the next campaign.");
@@ -380,27 +378,25 @@ function runRoundSimulation() {
       let hGoals = 0;
       let aGoals = 0;
 
-      // Base possession events dictated by mentality & pressing
       const getEventPace = (t) => {
-        let p = 12;
+        let p = 10;
         if (t.tactics.mentality === 'attacking') p += 2;
-        if (t.tactics.mentality === 'overload') p += 4;
+        if (t.tactics.mentality === 'overload') p += 3;
         if (t.tactics.mentality === 'defensive') p -= 2;
-        if (t.tactics.mentality === 'park the bus') p -= 4;
-        if (t.tactics.press === 'gegenpress') p += 2;
-        if (t.tactics.press === 'low block') p -= 2;
+        if (t.tactics.mentality === 'park the bus') p -= 3;
+        if (t.tactics.press === 'gegenpress') p += 1;
+        if (t.tactics.press === 'low block') p -= 1;
         return p;
       };
 
-      const totalPossessions = Math.max(16, getEventPace(homeTeam) + getEventPace(awayTeam));
+      const totalPossessions = Math.max(14, Math.min(26, getEventPace(homeTeam) + getEventPace(awayTeam)));
 
-      // Resolve discrete possession sequences
       for (let seq = 0; seq < totalPossessions; seq++) {
-        // Phase 1: Midfield control duel (Who starts the attack?)
+        // Phase 1: Midfield control contest
         const hMid = sampleChoice(hUnits.midfielders);
         const aMid = sampleChoice(aUnits.midfielders);
 
-        const hMidPwr = (hMid.attributes.scanning * 0.4 + hMid.attributes.processing * 0.4 + hMid.attributes.bioenergetics * 0.2) * 1.05; // Home pitch edge
+        const hMidPwr = (hMid.attributes.scanning * 0.4 + hMid.attributes.processing * 0.4 + hMid.attributes.bioenergetics * 0.2) * 1.08;
         const aMidPwr = (aMid.attributes.scanning * 0.4 + aMid.attributes.processing * 0.4 + aMid.attributes.bioenergetics * 0.2);
 
         const isHomeAttacking = (Math.random() < (hMidPwr / (hMidPwr + aMidPwr)));
@@ -409,42 +405,37 @@ function runRoundSimulation() {
         const attUnits = isHomeAttacking ? hUnits : aUnits;
         const defUnits = isHomeAttacking ? aUnits : hUnits;
 
-        // Phase 2: Build-up progression duel
-        let buildSuccess = false;
+        // Phase 2: Build-up progression vs opponent press
         const buildStyle = attTeam.tactics.buildMid || 'mixed';
         const pressStyle = defTeam.tactics.press || 'mid block';
 
         const passer = sampleChoice(attUnits.midfielders);
         const disturber = sampleChoice(defUnits.midfielders.concat(defUnits.defenders));
 
+        let buildPwr = (passer.attributes.scanning * 0.5 + passer.attributes.processing * 0.5);
+        let pressPwr = (disturber.attributes.scanning * 0.4 + disturber.attributes.dynamicPower * 0.3 + disturber.attributes.grit * 0.3);
+
         if (buildStyle === 'patient possession') {
-          const passPwr = (passer.attributes.scanning * 0.5 + passer.attributes.processing * 0.3 + passer.attributes.proprioception * 0.2);
-          const pressPwr = (disturber.attributes.dynamicPower * 0.4 + disturber.attributes.grit * 0.4 + disturber.attributes.scanning * 0.2) * (pressStyle === 'gegenpress' ? 1.15 : 1.0);
-          buildSuccess = (passPwr + randomGaussian(0, 10)) > (pressPwr * 0.95);
+          buildPwr += (passer.attributes.proprioception * 0.2);
+          if (pressStyle === 'gegenpress') pressPwr *= 1.12;
         } else if (buildStyle === 'direct') {
-          const longPwr = (passer.attributes.dynamicPower * 0.6 + passer.attributes.processing * 0.4);
-          const defPwr = (disturber.attributes.scanning * 0.5 + disturber.attributes.regulation * 0.5);
-          buildSuccess = (longPwr + randomGaussian(0, 12)) > (defPwr * 0.92);
-        } else {
-          // Mixed
-          const passPwr = (passer.attributes.processing * 0.5 + passer.attributes.scanning * 0.5);
-          const defPwr = (disturber.attributes.scanning * 0.5 + disturber.attributes.grit * 0.5);
-          buildSuccess = (passPwr + randomGaussian(0, 10)) > defPwr;
+          buildPwr = (passer.attributes.dynamicPower * 0.5 + passer.attributes.processing * 0.3);
+          pressPwr = (disturber.attributes.scanning * 0.5 + disturber.attributes.regulation * 0.3);
         }
 
+        const buildSuccess = (buildPwr + randomGaussian(0, 8)) > (pressPwr + randomGaussian(0, 8));
         if (!buildSuccess) {
           disturber.stats.tackles += 1;
-          continue; // Turnover
+          continue;
         }
 
-        // Phase 3: Chance Creation Duel & Shot Designation
+        // Phase 3: Chance Creation Duel
         const creationStyle = attTeam.tactics.chanceCreation || 'mixed';
         let shooter = null;
         let creator = passer;
         let defender = sampleChoice(defUnits.defenders);
         let shotXg = 0.0;
 
-        // Realistic chance decider: Strikers shoot most, but wingers and midfielders arrive too
         const pickAttacker = () => {
           const roll = Math.random();
           if (roll < 0.58 && attUnits.forwards.length) return sampleChoice(attUnits.forwards);
@@ -455,8 +446,6 @@ function runRoundSimulation() {
         if (creationStyle === 'flank play') {
           const winger = sampleChoice(attUnits.wideAttackers);
           const fullback = sampleChoice(defUnits.wideDefenders.length ? defUnits.wideDefenders : defUnits.defenders);
-
-          // Winger decides: 70% cross into the box, 30% cut inside and shoot
           const cutsInside = Math.random() < 0.30;
 
           if (cutsInside) {
@@ -465,13 +454,12 @@ function runRoundSimulation() {
 
             if ((takeOnPwr + randomGaussian(0, 8)) > tacklePwr) {
               shooter = winger;
-              creator = passer !== winger ? passer : null;
+              creator = (passer.id !== winger.id) ? passer : null;
               shotXg = Math.max(0.08, Math.min(0.24, 0.12 + ((takeOnPwr - tacklePwr) * 0.003)));
             } else {
               fullback.stats.tackles += 1;
             }
           } else {
-            // Delivery into the box
             const target = pickAttacker();
             const crossPwr = (winger.attributes.proprioception * 0.5 + winger.attributes.dynamicPower * 0.5);
             const tacklePwr = (fullback.attributes.dynamicPower * 0.5 + fullback.attributes.grit * 0.5);
@@ -500,7 +488,7 @@ function runRoundSimulation() {
 
           if ((runPwr + randomGaussian(0, 10)) > recoveryPwr) {
             shooter = runner;
-            creator = passer !== runner ? passer : null;
+            creator = (passer.id !== runner.id) ? passer : null;
             shotXg = Math.max(0.10, Math.min(0.36, 0.18 + ((runPwr - recoveryPwr) * 0.004)));
           } else {
             defender.stats.tackles += 1;
@@ -551,12 +539,10 @@ function runRoundSimulation() {
 
           const gk = defUnits.gk;
 
-          // Finishing quality modifies xG by ±20% max (finishing skill can't make a 0.10 xG shot into a 90% goal)
           const shooterSkill = (shooter.attributes.processing * 0.5 + shooter.attributes.regulation * 0.5);
           const gkSkill = (gk.attributes.dynamicPower * 0.5 + gk.attributes.processing * 0.5);
           const skillEdge = Math.max(0.80, Math.min(1.25, shooterSkill / Math.max(1, gkSkill)));
 
-          // Conversion probability strictly derived from shot xG
           const goalProb = Math.max(0.02, Math.min(0.85, shotXg * skillEdge));
 
           if (Math.random() < goalProb) {
@@ -570,6 +556,26 @@ function runRoundSimulation() {
             gk.stats.saves += 1;
           }
         }
+      }
+
+      fix.hg = hGoals;
+      fix.ag = aGoals;
+      fix.hxg = parseFloat(Math.max(0.20, hMatchXg).toFixed(2));
+      fix.axg = parseFloat(Math.max(0.15, aMatchXg).toFixed(2));
+      fix.played = true;
+
+      updateTableRecord(d, homeTeam.id, hGoals, aGoals, fix.hxg, fix.axg);
+      updateTableRecord(d, awayTeam.id, aGoals, hGoals, fix.axg, fix.hxg);
+
+      applyPlayerMinutes(homeTeam);
+      applyPlayerMinutes(awayTeam);
+    });
+  }
+
+  state.round++;
+  saveGameState();
+  return true;
+}
 
 function updateTableRecord(div, teamId, gf, ga, xg, xga) {
   const row = state.tables[div].find(r => r.teamId === teamId);
