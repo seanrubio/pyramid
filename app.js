@@ -153,6 +153,7 @@ function initializeDefaultCareer() {
 
   tableDiv = 10;
   viewedTeamId = userTeamId;
+  viewedFixtureRound = null;
 
   state = {
     season: 1,
@@ -189,7 +190,6 @@ function renderLayout() {
   const isOpponent = (currentTeam.id !== state.userTeamId);
   const isSeasonOver = state.round > state.maxRounds;
 
-  // Safe tactic label extraction to prevent template literal parsing collisions
   const styleLabel = ((currentTeam && currentTeam.tactics && currentTeam.tactics.chanceCreation) ? currentTeam.tactics.chanceCreation : 'mixed').toUpperCase();
   const pressLabel = ((currentTeam && currentTeam.tactics && currentTeam.tactics.press) ? currentTeam.tactics.press : 'mid block').toUpperCase();
 
@@ -243,17 +243,24 @@ function renderLayout() {
 
 function switchTab(t) {
   activeTab = t;
+  if (t === 'league') {
+    viewedFixtureRound = null;
+  }
   renderLayout();
 }
 
 function handleSimRound() {
   const success = runRoundSimulation();
-  if (success) renderLayout();
+  if (success) {
+    viewedFixtureRound = null; // Follow the active round automatically
+    renderLayout();
+  }
 }
 
 function handleStartNewSeason() {
   if (confirm(`Conclude Season ${state.season} and begin Season ${state.season + 1}? Table and player stats will reset for a new calendar.`)) {
     resetSeasonClean();
+    viewedFixtureRound = null;
     renderLayout();
   }
 }
@@ -639,7 +646,7 @@ function renderFixturesView(container) {
               }
 
               return `
-                <tr style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08);' : ''}">
+                <tr style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08)' : ''}">
                   <td style="text-align: center; color: var(--text-muted); font-family: monospace;">${round}</td>
                   <td style="text-align: center;">${venueBadge}</td>
                   <td>
@@ -671,7 +678,8 @@ function setLeagueDiv(d) {
 
 function changeLeagueRound(delta) {
   const maxR = state.maxRounds || 38;
-  const curr = viewedFixtureRound || Math.min(state.round, maxR);
+  const currentRound = Math.max(1, Math.min(state.round, maxR));
+  const curr = (viewedFixtureRound !== null) ? viewedFixtureRound : currentRound;
   const target = Math.max(1, Math.min(maxR, curr + delta));
   viewedFixtureRound = target;
   renderLeagueView(document.getElementById('view-workspace'));
@@ -679,8 +687,8 @@ function changeLeagueRound(delta) {
 
 function renderLeagueView(container) {
   const maxR = state.maxRounds || 38;
-  const activeRound = viewedFixtureRound || Math.min(state.round, maxR);
-  viewedFixtureRound = activeRound;
+  const currentRound = Math.max(1, Math.min(state.round, maxR));
+  const activeRound = (viewedFixtureRound !== null) ? viewedFixtureRound : currentRound;
 
   const rows = [...state.tables[tableDiv]].sort((a, b) => 
     b.pts - a.pts || 
