@@ -60,9 +60,9 @@ export function initStatsViewState(ctx) {
   }
 }
 
-function formatValue(val, isDecimal = false) {
+function formatValue(val, decimals = 0) {
   if (val === null || val === undefined || val === 0 || val === '0' || val === '0.0' || val === '0.00') return '—';
-  return isDecimal ? Number(val).toFixed(2) : `${val}`;
+  return decimals > 0 ? Number(val).toFixed(decimals) : `${val}`;
 }
 
 function formatPct(num, den) {
@@ -365,7 +365,7 @@ export function renderStatsView(container, ctx) {
             <th onclick="sortStatsView('club')" style="cursor: pointer; width: 160px; ${svs.sort.key === 'club' ? 'color: var(--accent);' : ''}">Club (Div)</th>
             <th onclick="sortStatsView('age')" style="cursor: pointer; width: 40px; text-align: center; ${svs.sort.key === 'age' ? 'color: var(--accent);' : ''}">Age</th>
             <th style="width: 150px; white-space: nowrap;">Archetype</th>
-            <th style="min-width: 130px; white-space: nowrap;">Traits</th>
+            <th style="min-width: 130px; max-width: 190px;">Traits</th>
             <th style="width: 100px; text-align: center; white-space: nowrap;">Phases</th>
             <th onclick="sortStatsView('minutesPlayed')" style="cursor: pointer; width: 55px; text-align: right; ${svs.sort.key === 'minutesPlayed' ? 'color: var(--accent);' : ''}">Min</th>
             ${svs.selectedMetrics.map(mKey => {
@@ -401,7 +401,11 @@ export function renderStatsView(container, ctx) {
                 </td>
                 <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
                 <td style="color: var(--text-muted); font-size: 11px; white-space: nowrap;">${p.archetypeName}</td>
-                <td style="white-space: nowrap;">${renderTraitBadges(p.traits)}</td>
+                <td style="min-width: 130px; max-width: 190px;">
+                  <div style="display: flex; flex-wrap: wrap; gap: 3px; line-height: 1.2;">
+                    ${renderTraitBadges(p.traits)}
+                  </div>
+                </td>
                 <td style="text-align: center; font-size: 11px; white-space: nowrap;">
                   <span style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
                     ${renderGlyphCell(glyphs.ip)}
@@ -415,7 +419,9 @@ export function renderStatsView(container, ctx) {
                   if (meta.type === 'ratio') {
                     display = formatPct(p.stats?.[meta.num], p.stats?.[meta.den]);
                   } else {
-                    display = formatValue(val, meta.type === 'decimal' || isP90);
+                    // Total mode: 1 decimal for xG/xA, 0 for counts. P90 mode: 2 decimals.
+                    const decimals = isP90 ? 2 : (['xg', 'xa'].includes(mKey) ? 1 : 0);
+                    display = formatValue(val, decimals);
                   }
                   const isSorted = svs.sort.key === mKey;
                   return `
