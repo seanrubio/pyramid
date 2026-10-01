@@ -1,5 +1,5 @@
 import { OUTFIELD_ARCHETYPES, GK_ARCHETYPES } from '../constants.js';
-import { parseGlyphs, renderGlyphCell, renderTraitBadges } from './squadView.js';
+import { parseGlyphs, renderGlyphCell } from './squadView.js';
 
 // --- CONFIGURATION & CATALOG OF ALL AVAILABLE STAT METRICS ---
 export const STAT_CATALOG = {
@@ -40,9 +40,9 @@ export function initStatsViewState(ctx) {
     ctx.statsViewState = {
       mode: 'ovr', // 'ovr' | 'p90'
       selectedMetrics: [...DEFAULT_METRIC_KEYS],
-      divisions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], // all by default
+      divisions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       traits: [],
-      traitMode: 'or', // 'or' | 'and'
+      traitMode: 'or',
       phases: {
         ip: ['+', '✓', '-'],
         oop: ['+', '✓', '-'],
@@ -51,16 +51,15 @@ export function initStatsViewState(ctx) {
       minMinutes: 1,
       minAge: 16,
       maxAge: 45,
-      archetypes: [], // empty = all
+      archetypes: [],
       sort: { key: 'goals', asc: false },
       page: 1,
       pageSize: 25,
-      openDropdown: null // id of currently opened multi-select popover
+      openDropdown: null
     };
   }
 }
 
-// Format helpers
 function formatValue(val, isDecimal = false) {
   if (val === null || val === undefined || val === 0 || val === '0' || val === '0.0' || val === '0.00') return '—';
   return isDecimal ? Number(val).toFixed(2) : `${val}`;
@@ -172,7 +171,7 @@ export function renderStatsView(container, ctx) {
   const startIdx = (svs.page - 1) * svs.pageSize;
   const visiblePlayers = filtered.slice(startIdx, startIdx + svs.pageSize);
 
-  // Available traits collection from DB
+  // Available traits collection from DB[cite: 2]
   const allTraits = [];
   if (ctx.DB?.traits) {
     Object.values(ctx.DB.traits).forEach(t => {
@@ -181,7 +180,7 @@ export function renderStatsView(container, ctx) {
     });
   }
 
-  // All Archetypes
+  // All Archetypes[cite: 2, 5]
   const allArchetypes = [...OUTFIELD_ARCHETYPES, ...GK_ARCHETYPES].map(key => ({
     key,
     name: ctx.DB?.archetypes?.[key]?.name || key
@@ -193,10 +192,10 @@ export function renderStatsView(container, ctx) {
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
       <div style="display: flex; gap: 4px; align-items: center;">
         <button onclick="setStatsViewMode('ovr')" style="padding: 4px 12px; font-weight: 700; ${svs.mode === 'ovr' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
-          TOTAL (OVR)
+          TOTAL
         </button>
         <button onclick="setStatsViewMode('p90')" style="padding: 4px 12px; font-weight: 700; ${svs.mode === 'p90' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
-          PER 90 (P90)
+          PER 90
         </button>
       </div>
 
@@ -209,10 +208,10 @@ export function renderStatsView(container, ctx) {
     <div class="panel" style="padding: 12px; margin-bottom: 14px; position: relative;">
       <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
         
-        <!-- Multi-Select: Columns / Metrics -->
+        <!-- Multi-Select: Stats / Metrics -->
         <div style="position: relative;">
           <button onclick="toggleStatsDropdown('metrics')" style="display: flex; align-items: center; gap: 6px;">
-            <span>Columns (${svs.selectedMetrics.length})</span>
+            <span>Stats</span>
             <span style="font-size: 8px;">▼</span>
           </button>
           <div id="popover-metrics" style="display: ${svs.openDropdown === 'metrics' ? 'block' : 'none'}; position: absolute; top: 100%; left: 0; z-index: 100; background: #161b22; border: 1px solid var(--border); border-radius: 4px; padding: 8px; width: 280px; max-height: 320px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.5); margin-top: 4px;">
@@ -232,7 +231,7 @@ export function renderStatsView(container, ctx) {
         <!-- Multi-Select: Divisions -->
         <div style="position: relative;">
           <button onclick="toggleStatsDropdown('divs')" style="display: flex; align-items: center; gap: 6px;">
-            <span>Divisions (${svs.divisions.length === 10 ? 'All' : svs.divisions.length})</span>
+            <span>Divisions</span>
             <span style="font-size: 8px;">▼</span>
           </button>
           <div id="popover-divs" style="display: ${svs.openDropdown === 'divs' ? 'block' : 'none'}; position: absolute; top: 100%; left: 0; z-index: 100; background: #161b22; border: 1px solid var(--border); border-radius: 4px; padding: 8px; width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); margin-top: 4px;">
@@ -251,10 +250,10 @@ export function renderStatsView(container, ctx) {
           </div>
         </div>
 
-        <!-- Multi-Select: Traits & Match Logic (OR / AND) -->
+        <!-- Multi-Select: Traits -->
         <div style="position: relative;">
           <button onclick="toggleStatsDropdown('traits')" style="display: flex; align-items: center; gap: 6px;">
-            <span>Traits (${svs.traits.length === 0 ? 'Any' : svs.traits.length})</span>
+            <span>Traits</span>
             <span style="font-size: 8px;">▼</span>
           </button>
           <div id="popover-traits" style="display: ${svs.openDropdown === 'traits' ? 'block' : 'none'}; position: absolute; top: 100%; left: 0; z-index: 100; background: #161b22; border: 1px solid var(--border); border-radius: 4px; padding: 8px; width: 250px; max-height: 320px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.5); margin-top: 4px;">
@@ -279,10 +278,10 @@ export function renderStatsView(container, ctx) {
           </div>
         </div>
 
-        <!-- Multi-Select: Archetype Filter -->
+        <!-- Multi-Select: Archetype -->
         <div style="position: relative;">
           <button onclick="toggleStatsDropdown('archetypes')" style="display: flex; align-items: center; gap: 6px;">
-            <span>Archetype (${svs.archetypes.length === 0 ? 'All' : svs.archetypes.length})</span>
+            <span>Archetype</span>
             <span style="font-size: 8px;">▼</span>
           </button>
           <div id="popover-archetypes" style="display: ${svs.openDropdown === 'archetypes' ? 'block' : 'none'}; position: absolute; top: 100%; left: 0; z-index: 100; background: #161b22; border: 1px solid var(--border); border-radius: 4px; padding: 8px; width: 220px; max-height: 280px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.5); margin-top: 4px;">
@@ -300,7 +299,7 @@ export function renderStatsView(container, ctx) {
 
         <!-- Numeric Filter: Min Minutes -->
         <div style="display: flex; align-items: center; gap: 4px; font-size: 11px;">
-          <span style="color: var(--text-muted);">Min':</span>
+          <span style="color: var(--text-muted);">Mins > </span>
           <input type="number" min="0" max="4000" step="50" value="${svs.minMinutes}" onchange="setStatsMinMinutes(this.value)" style="width: 58px; text-align: right;">
         </div>
 
@@ -364,8 +363,8 @@ export function renderStatsView(container, ctx) {
             <th onclick="sortStatsView('div')" style="cursor: pointer; width: 44px; text-align: center; ${svs.sort.key === 'div' ? 'color: var(--accent);' : ''}">Div</th>
             <th style="width: 140px;">Club</th>
             <th onclick="sortStatsView('age')" style="cursor: pointer; width: 40px; text-align: center; ${svs.sort.key === 'age' ? 'color: var(--accent);' : ''}">Age</th>
-            <th style="width: 110px;">Archetype</th>
-            <th style="width: 75px; text-align: center;">Phases</th>
+            <th style="width: 160px; white-space: nowrap;">Archetype</th>
+            <th style="width: 100px; text-align: center; white-space: nowrap;">Phases</th>
             <th onclick="sortStatsView('minutesPlayed')" style="cursor: pointer; width: 55px; text-align: right; ${svs.sort.key === 'minutesPlayed' ? 'color: var(--accent);' : ''}">Min</th>
             ${svs.selectedMetrics.map(mKey => {
               const meta = STAT_CATALOG[mKey];
@@ -391,15 +390,18 @@ export function renderStatsView(container, ctx) {
             return `
               <tr style="background: ${isUserClub ? 'rgba(88, 166, 255, 0.08)' : 'transparent'};">
                 <td style="text-align: center; color: var(--text-muted); font-size: 10px;">${startIdx + idx + 1}</td>
-                <td style="font-weight: 600; color: #fff;">
+                <td style="font-weight: 600; color: #fff; white-space: nowrap;">
                   ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
                 </td>
                 <td style="text-align: center; font-size: 10px; color: var(--text-muted);">D${p.teamDiv}</td>
-                <td><span onclick="inspectTeam('${p.teamId}', 'squad')" style="cursor: pointer; color: var(--text);">${p.teamName}</span></td>
+                <td style="white-space: nowrap;"><span onclick="inspectTeam('${p.teamId}', 'squad')" style="cursor: pointer; color: var(--text);">${p.teamName}</span></td>
                 <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
-                <td style="color: var(--text-muted); font-size: 11px;">${p.archetypeName}</td>
+                <td style="color: var(--text-muted); font-size: 11px; white-space: nowrap;">${p.archetypeName}</td>
                 <td style="text-align: center; font-size: 11px; white-space: nowrap;">
-                  ${renderGlyphCell(glyphs.ip)} ${renderGlyphCell(glyphs.oop)}${renderGlyphCell(glyphs.tr)}
+                  <span style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                    ${renderGlyphCell(glyphs.ip)}
+                    ${renderGlyphCell(glyphs.oop)}${renderGlyphCell(glyphs.tr)}
+                  </span>
                 </td>
                 <td style="text-align: right; color: var(--text-muted); font-family: monospace;">${p.minutesPlayed}'</td>${svs.selectedMetrics.map(mKey => {
                   const meta = STAT_CATALOG[mKey];
