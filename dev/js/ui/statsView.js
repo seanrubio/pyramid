@@ -1,5 +1,5 @@
 import { OUTFIELD_ARCHETYPES, GK_ARCHETYPES } from '../constants.js';
-import { parseGlyphs, renderGlyphCell } from './squadView.js';
+import { parseGlyphs, renderGlyphCell, renderTraitBadges } from './squadView.js';
 
 // --- CONFIGURATION & CATALOG OF ALL AVAILABLE STAT METRICS ---
 export const STAT_CATALOG = {
@@ -154,7 +154,9 @@ export function renderStatsView(container, ctx) {
     } else if (k === 'age') {
       valA = a.age || 0;
       valB = b.age || 0;
-    } else if (k === 'div') {
+    } else if (k === 'club') {
+      const cmp = a.teamName.localeCompare(b.teamName);
+      if (cmp !== 0) return svs.sort.asc ? cmp : -cmp;
       valA = a.teamDiv;
       valB = b.teamDiv;
     } else {
@@ -360,10 +362,10 @@ export function renderStatsView(container, ctx) {
           <tr>
             <th style="width: 32px; text-align: center;">#</th>
             <th onclick="sortStatsView('name')" style="cursor: pointer; ${svs.sort.key === 'name' ? 'color: var(--accent);' : ''}">Player</th>
-            <th onclick="sortStatsView('div')" style="cursor: pointer; width: 44px; text-align: center; ${svs.sort.key === 'div' ? 'color: var(--accent);' : ''}">Div</th>
-            <th style="width: 140px;">Club</th>
+            <th onclick="sortStatsView('club')" style="cursor: pointer; width: 160px; ${svs.sort.key === 'club' ? 'color: var(--accent);' : ''}">Club (Div)</th>
             <th onclick="sortStatsView('age')" style="cursor: pointer; width: 40px; text-align: center; ${svs.sort.key === 'age' ? 'color: var(--accent);' : ''}">Age</th>
-            <th style="width: 160px; white-space: nowrap;">Archetype</th>
+            <th style="width: 150px; white-space: nowrap;">Archetype</th>
+            <th style="min-width: 130px; white-space: nowrap;">Traits</th>
             <th style="width: 100px; text-align: center; white-space: nowrap;">Phases</th>
             <th onclick="sortStatsView('minutesPlayed')" style="cursor: pointer; width: 55px; text-align: right; ${svs.sort.key === 'minutesPlayed' ? 'color: var(--accent);' : ''}">Min</th>
             ${svs.selectedMetrics.map(mKey => {
@@ -393,10 +395,13 @@ export function renderStatsView(container, ctx) {
                 <td style="font-weight: 600; color: #fff; white-space: nowrap;">
                   ${p.name}${p.isGK ? '<span style="color: var(--accent); font-size: 10px; margin-left: 4px;">[GK]</span>' : ''}
                 </td>
-                <td style="text-align: center; font-size: 10px; color: var(--text-muted);">D${p.teamDiv}</td>
-                <td style="white-space: nowrap;"><span onclick="inspectTeam('${p.teamId}', 'squad')" style="cursor: pointer; color: var(--text);">${p.teamName}</span></td>
+                <td style="white-space: nowrap;">
+                  <span onclick="inspectTeam('${p.teamId}', 'squad')" style="cursor: pointer; color: var(--text);">${p.teamName}</span>
+                  <span style="font-size: 10px; color: var(--text-muted); margin-left: 2px;">(${p.teamDiv})</span>
+                </td>
                 <td style="text-align: center; color: var(--text-muted);">${p.age}</td>
                 <td style="color: var(--text-muted); font-size: 11px; white-space: nowrap;">${p.archetypeName}</td>
+                <td style="white-space: nowrap;">${renderTraitBadges(p.traits)}</td>
                 <td style="text-align: center; font-size: 11px; white-space: nowrap;">
                   <span style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
                     ${renderGlyphCell(glyphs.ip)}
@@ -455,7 +460,7 @@ export function sortStatsView(key, ctx, renderLayout) {
     s.asc = !s.asc;
   } else {
     s.key = key;
-    s.asc = (key === 'name' || key === 'div');
+    s.asc = (key === 'name' || key === 'club');
   }
   ctx.statsViewState.page = 1;
   renderLayout();
