@@ -1,5 +1,5 @@
 import { FORMATIONS } from '../constants.js';
-import { getCurrentCalendarSlot } from '../engine.js';
+import { getCurrentCalendarSlot, sortTableEntries } from '../engine.js';
 
 export function renderMatchView(container, ctx) {
   const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
@@ -8,38 +8,52 @@ export function renderMatchView(container, ctx) {
 
   if (!ctx.matchReportSide) ctx.matchReportSide = 'home';
 
-  // 1. Check if viewing a specific past match report (e.g., clicked scoreline from fixtures/league)
   let targetFixture = null;
   let targetCompName = '';
-  let matchWeekNumber = ctx.viewedMatchRound;
+  let matchWeekNumber = null;
+  let isViewingHistorical = false;
 
+  // 1. If viewing a historical match report via openMatchReport() or after recent simulation
   if (ctx.viewedMatchRound !== null) {
     const weekSlots = calendar[ctx.viewedMatchRound] || {};
+    const targetMoment = ctx.viewedMatchMoment || null;
+
     for (let m = 1; m <= 4; m++) {
+      if (targetMoment !== null && m !== targetMoment) continue;
       const slot = weekSlots[m];
       if (slot && slot.type === 'match' && slot.matches) {
         const fix = slot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
-        if (fix) {
+        if (fix && fix.played) {
           targetFixture = fix;
           targetCompName = fix.cupName || slot.cupRoundName || `Division ${activeTeam.div}`;
+          matchWeekNumber = ctx.viewedMatchRound;
+          isViewingHistorical = true;
           break;
         }
       }
     }
   }
 
-  // 2. If not viewing a past match, check current moment slot
-  const currentSlot = getCurrentCalendarSlot(ctx.state);
-  if (!targetFixture && currentSlot && currentSlot.type === 'match' && currentSlot.matches) {
-    targetFixture = currentSlot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
-    if (targetFixture) {
-      targetCompName = targetFixture.cupName || currentSlot.cupRoundName || `Division ${activeTeam.div}`;
-      matchWeekNumber = ctx.state.week;
+  // 2. If the user just simulated a match in this moment and hasn't navigated away, show that match
+  if (!targetFixture && ctx.state.lastSimulatedMatch && (ctx.state.lastSimulatedMatch.home === activeTeamId || ctx.state.lastSimulatedMatch.away === activeTeamId)) {
+    targetFixture = ctx.state.lastSimulatedMatch;
+    targetCompName = targetFixture.cupName || targetFixture.compName || `Division ${activeTeam.div}`;
+    matchWeekNumber = targetFixture.weekNumber || ctx.state.week;
+  }
+
+  // 3. Otherwise, check current moment slot
+  if (!targetFixture) {
+    const currentSlot = getCurrentCalendarSlot(ctx.state);
+    if (currentSlot && currentSlot.type === 'match' && currentSlot.matches) {
+      targetFixture = currentSlot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
+      if (targetFixture) {
+        targetCompName = targetFixture.cupName || currentSlot.cupRoundName || `Division ${activeTeam.div}`;
+        matchWeekNumber = ctx.state.week;
+      }
     }
   }
 
-  // 3. If no active match in the current tick (transfer window, training, or bye),
-  // locate the NEXT upcoming match on the calendar for scouting
+  // 4. If off-fixture, locate the NEXT upcoming match across the calendar to scout
   let nextMatchMeta = null;
   if (!targetFixture) {
     for (let w = ctx.state.week; w <= 52; w++) {
@@ -61,7 +75,8 @@ export function renderMatchView(container, ctx) {
     }
   }
 
-  // 4. Render transfer window banner if in window and no upcoming match found
+  // 5. Transfer Window banner if no upcoming match found
+  const currentSlot = getCurrentCalendarSlot(ctx.state);
   if (!targetFixture && currentSlot && currentSlot.type === 'window') {
     container.innerHTML = `
       <div class="panel" style="padding: 32px; text-align: center;">
@@ -90,9 +105,57 @@ export function renderMatchView(container, ctx) {
   const oppId = isHome ? targetFixture.away : targetFixture.home;
   const oppTeam = isHome ? awayTeam : homeTeam;
 
+  // Standings data for scouting
+  const isRegional = (targetFixture.comp === 'regional' && targetFixture.cupName);
+  const rawTable = isRegional
+    ? (ctx.state.regionalTables?.[targetFixture.cupName] || [])
+    : (ctx.state.tables?.[oppTeam.div] || []);
+  const sortedTable = sortTableEntries(rawTable);
+  const oppRank = sortedTable.findIndex(r => r.teamId === oppId) + 1;
+  const oppRow = sortedTable.find(r => r.teamId === oppId) || { p: 0, w: 0, d: 0, l: 0, pts: 0, xg: 0, xga: 0, form: [] };
+
+  const oppP = Math.max(1, oppRow.p);
+  const oppXgPerGame = oppRow.p > 0 ? (oppRow.xg / oppP).toFixed(2) : '0.00';
+  const oppXgaPerGame = oppRow.p > 0 ? (oppRow.xga / oppP).toFixed(2) : '0.00';
+
+  const xgSorted = [...rawTable].sort((a, b) => (b.p > 0 ? b.xg / b.p : 0) - (a.p > 0 ? a.xg / a.p : 0));
+  const xgRank = xgSorted.findIndex(r => r.teamId === oppId) + 1;
+
+  const xgaSorted = [...rawTable].sort((a, b) => (a.p > 0 ? a.xga / a.p : 999) - (b.p > 0 ? b.xga / b.p : 999));
+  const xgaRank = xgaSorted.findIndex(r => r.teamId === oppId) + 1;
+
+  const formList = oppRow.form && oppRow.form.length > 0 ? oppRow.form : ['-'];
+  const formBadges = formList.map(res => {
+    let color = 'var(--text-muted)';
+    let bg = 'rgba(255, 255, 255, 0.05)';
+    if (res === 'W') { color = 'var(--green, #3fb950)'; bg = 'rgba(63, 185, 80, 0.15)'; }
+    else if (res === 'D') { color = '#e3b341'; bg = 'rgba(227, 179, 65, 0.15)'; }
+    else if (res === 'L') { color = 'var(--red, #f85149)'; bg = 'rgba(248, 81, 73, 0.15)'; }
+    return `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; font-size: 11px; font-weight: 700; color: ${color}; background: ${bg};">${res}</span>`;
+  }).join(' ');
+
   const tactics = oppTeam.tactics || {};
   const formation = oppTeam.formation || '4-4-2 Flat';
   const blueprintName = (tactics.blueprint || 'Custom').replace(/_/g, ' ');
+
+  const formRoles = FORMATIONS[oppTeam.formation] || FORMATIONS['4-4-2 Flat'];
+  const getSlotRoleName = (p) => {
+    if (!p.slot) return 'Reserve';
+    if (p.slot.startsWith('B')) return `Bench (${p.slot})`;
+    if (p.slot === 'S1') return 'GK';
+    const slotIdx = parseInt(p.slot.replace('S', ''), 10) - 1;
+    return formRoles[slotIdx] || 'Starter';
+  };
+
+  const calculatePillarAvg = (p) => {
+    if (!p.attributes) return 0;
+    const vals = Object.values(p.attributes);
+    return vals.length ? (vals.reduce((sum, v) => sum + v, 0) / vals.length) : 0;
+  };
+
+  const top3Players = [...(oppTeam.squad || [])]
+    .sort((a, b) => calculatePillarAvg(b) - calculatePillarAvg(a))
+    .slice(0, 3);
 
   // Full Post-Match Report Renderer
   const renderPostMatchSection = () => {
@@ -160,7 +223,7 @@ export function renderMatchView(container, ctx) {
       <!-- Result Banner -->
       <div class="panel" style="padding: 16px; margin-bottom: 16px; text-align: center; background: rgba(0,0,0,0.25);">
         <div style="font-size: 10px; color: var(--text-muted); font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">
-          WEEK ${matchWeekNumber} FINAL RESULT
+          FINAL RESULT
         </div>
         <div style="display: flex; justify-content: center; align-items: center; gap: 24px; margin-bottom: 6px;">
           <div style="flex: 1; text-align: right;">
@@ -180,7 +243,7 @@ export function renderMatchView(container, ctx) {
         </div>
       </div>
 
-      <!-- Match Breakdown: Comparison Bar on Left, Single Box Score on Right -->
+      <!-- Match Breakdown: Comparison Bar on Left, Box Score on Right -->
       <div style="display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;">
         <div class="panel" style="padding: 12px;">
           <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
@@ -197,7 +260,6 @@ export function renderMatchView(container, ctx) {
           </div>
         </div>
 
-        <!-- Box Score Column with Side Switcher -->
         <div class="panel" style="overflow-x: auto; padding: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px;">
             <strong style="color: #fff; font-size: 12px; text-transform: uppercase;">PLAYER PERFORMANCE</strong>
@@ -236,12 +298,12 @@ export function renderMatchView(container, ctx) {
   };
 
   container.innerHTML = `
-    <!-- Top Return Bar (if inspecting past fixture) -->
-    ${ctx.viewedMatchRound !== null ? `
+    <!-- Top Action Bar (if viewing concluded match, show Return button) -->
+    ${targetFixture.played ? `
       <div class="panel" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; margin-bottom: 16px;">
-        <span style="font-size: 11px; color: var(--text-muted);">VIEWING HISTORICAL MATCH REPORT: WEEK ${ctx.viewedMatchRound}</span>
-        <button onclick="resetToCurrentMatchRound()" class="primary" style="padding: 2px 8px; font-size: 10px; font-weight: 700;">
-          RETURN TO CURRENT / NEXT FIXTURE
+        <span style="font-size: 11px; color: var(--accent); font-weight: 700;">MATCH CONCLUDED</span>
+        <button onclick="resetToCurrentMatchRound()" class="primary" style="padding: 3px 10px; font-size: 11px; font-weight: 700;">
+          SCOUT UPCOMING FIXTURE &gt;
         </button>
       </div>
     ` : ''}
@@ -266,23 +328,67 @@ export function renderMatchView(container, ctx) {
     </div>
 
     ${targetFixture.played ? renderPostMatchSection() : `
-      <!-- Opposition Tactical Scouting Report -->
-      <div class="panel" style="padding: 16px; max-width: 600px;">
-        <h3 style="margin-top: 0; font-size: 13px; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px;">
-          OPPOSITION TACTICAL SCOUTING
-        </h3>
-        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
-          <div style="display: flex; justify-content: space-between;">
-            <span style="color: var(--text-muted);">Blueprint:</span>
-            <strong style="color: #fff; text-transform: capitalize;">${blueprintName}</strong>
+      <!-- Complete Opposition Scouting Report -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="panel" style="padding: 16px;">
+          <h3 style="margin-top: 0; font-size: 13px; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px;">
+            OPPOSITION PROFILE & STANDINGS
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 9px; font-size: 12px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Current Standing:</span>
+              <strong style="color: #fff;">#${oppRank || '—'} (${oppRow.w}-${oppRow.d}-${oppRow.l} •${oppRow.pts} PTS)</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Avg xG / Game:</span>
+              <strong style="color: #fff; font-family: monospace;">${oppXgPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgRank || '—'})</span></strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Avg xGA / Game:</span>
+              <strong style="color: #fff; font-family: monospace;">${oppXgaPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgaRank || '—'})</span></strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 9px;">
+              <span style="color: var(--text-muted);">Recent Form:</span>
+              <div style="display: flex; gap: 4px;">${formBadges}</div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+              <span style="color: var(--text-muted);">Blueprint:</span>
+              <strong style="color: #fff; text-transform: capitalize;">${blueprintName}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Formation:</span>
+              <strong style="color: #fff;">${formation}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Defensive Line & Press:</span>
+              <strong style="color: #fff; text-transform: capitalize;">${tactics.press || 'mid block'}</strong>
+            </div>
           </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span style="color: var(--text-muted);">Formation:</span>
-            <strong style="color: #fff;">${formation}</strong>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span style="color: var(--text-muted);">Defensive Line & Press:</span>
-            <strong style="color: #fff; text-transform: capitalize;">${tactics.press || 'mid block'}</strong>
+        </div>
+
+        <div class="panel" style="padding: 16px;">
+          <h3 style="margin-top: 0; font-size: 13px; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px;">
+            KEY PLAYERS TO WATCH
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${top3Players.map((p) => {
+              const posRole = getSlotRoleName(p);
+              const archName = p.archetypeName || p.archetypeKey || 'Universal';
+
+              return `
+                <div style="padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 4px; display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="color: #fff; font-size: 13px;">${p.name}</strong>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted);">
+                    Last Position: <span style="color: #fff; font-weight: 600;">${posRole}</span>
+                    <span style="margin: 0 6px; color: var(--border);">|</span>
+                    Archetype: <span style="color: #fff; font-weight: 600;">${archName}</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
       </div>
@@ -296,7 +402,10 @@ export function setMatchReportSide(side, ctx, renderLayout) {
 }
 
 export function changeMatchRound() {}
+
 export function resetToCurrentMatchRound(ctx, renderLayout) {
   ctx.viewedMatchRound = null;
+  ctx.viewedMatchMoment = null;
+  if (ctx.state) ctx.state.lastSimulatedMatch = null;
   renderLayout();
 }
