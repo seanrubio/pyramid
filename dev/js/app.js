@@ -13,7 +13,7 @@ import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadV
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
 import { renderMatchView, changeMatchRound, resetToCurrentMatchRound, setMatchReportSide } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
-import { renderLeagueView, setLeagueDiv, changeLeagueRound, setLeagueLeaderTab } from './ui/leagueView.js';
+import { renderLeagueView, setLeagueDiv, changeLeagueRound, setLeagueLeaderTab, setCompetitionView, setSelectedRegionalCup, selectCupRoundTab } from './ui/leagueView.js';
 import { renderStatsView, setStatsViewMode, sortStatsView, setStatsPage, toggleStatsDropdown, toggleStatsMetric, resetStatsMetrics, toggleStatsDiv, setAllStatsDivs, toggleStatsTrait, setStatsTraitMode, clearStatsTraits, toggleStatsPhase, toggleStatsArchetype, clearStatsArchetypes, setStatsMinMinutes, setStatsAgeRange, resetAllStatsFilters } from './ui/statsView.js';
 
 export const context = {
@@ -25,6 +25,7 @@ export const context = {
   tableDiv: 10,
   activeCompetitionView: 'league',
   selectedRegionalCup: 'North American Cup',
+  selectedCupRoundTab: 0,
   viewedTeamId: null,
   viewedFixtureRound: null,
   viewedMatchRound: null,
@@ -229,6 +230,8 @@ export function renderLayout() {
 }
 
 Object.assign(window, {
+  context,
+  renderLayout,
   switchTab,
   inspectTeam,
   openMatchReport,
@@ -247,6 +250,9 @@ Object.assign(window, {
   setLeagueDiv: (d) => setLeagueDiv(d, context, renderLayout),
   changeLeagueRound: (delta) => changeLeagueRound(delta, context, renderLayout),
   setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout),
+  setCompetitionView: (mode) => setCompetitionView(mode, context, renderLayout),
+  setSelectedRegionalCup: (cup) => setSelectedRegionalCup(cup, context, renderLayout),
+  selectCupRoundTab: (idx) => selectCupRoundTab(idx, context, renderLayout),
   setStatsViewMode: (mode) => setStatsViewMode(mode, context, renderLayout),
   sortStatsView: (key) => sortStatsView(key, context, renderLayout),
   setStatsPage: (p) => setStatsPage(p, context, renderLayout),
@@ -295,7 +301,5 @@ async function boot() {
     `;
   }
 }
-
-
 
 window.addEventListener('DOMContentLoaded', boot);
