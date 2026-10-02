@@ -1,15 +1,14 @@
-import { sortTableEntries, REGIONAL_CUP_DEFINITIONS } from '../engine.js';
+import { sortTableEntries } from '../engine.js';
 
 export function renderLeagueView(container, ctx) {
   if (!ctx.activeCompetitionView) ctx.activeCompetitionView = 'league';
-  if (!ctx.selectedRegionalCup) ctx.selectedRegionalCup = 'North American Cup';
   if (!ctx.leagueLeaderTab) ctx.leagueLeaderTab = 'boot';
 
-  const formatShortName = (fullName) => {
-    if (!fullName) return '';
-    const parts = fullName.trim().split(' ');
-    return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : parts[0];
-  };
+  // Discover available regional cup names dynamically from state
+  const availableCups = Object.keys(ctx.state.regionalTables || {}).sort();
+  if (!ctx.selectedRegionalCup || !ctx.state.regionalTables?.[ctx.selectedRegionalCup]) {
+    ctx.selectedRegionalCup = availableCups[0] || 'North American Cup';
+  }
 
   const compTabsHtml = `
     <div style="display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
@@ -17,7 +16,7 @@ export function renderLeagueView(container, ctx) {
         LEAGUE DIVISIONS (1–10)
       </button>
       <button onclick="setCompetitionView('regional')" style="font-weight: 700; ${ctx.activeCompetitionView === 'regional' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
-        REGIONAL CUPS (24)
+        REGIONAL CUPS (${availableCups.length})
       </button>
       <button onclick="setCompetitionView('cup')" style="font-weight: 700; ${ctx.activeCompetitionView === 'cup' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
         UNIVERSAL CUP BRACKET
@@ -25,6 +24,7 @@ export function renderLeagueView(container, ctx) {
     </div>
   `;
 
+  // 1. Universal Cup Knockout View
   if (ctx.activeCompetitionView === 'cup') {
     const rounds = ctx.state.cupState?.rounds || [];
     const roundLabels = ['Round 1', 'Round 2', 'Round 3', 'Round 4', 'Quarterfinals', 'Semifinals', 'Final'];
@@ -72,7 +72,7 @@ export function renderLeagueView(container, ctx) {
     return;
   }
 
-  // Standings Render (League or Regional)
+  // 2. Standings Tables (League or Regional)
   const isRegional = (ctx.activeCompetitionView === 'regional');
   let tableKey = isRegional ? ctx.selectedRegionalCup : ctx.tableDiv;
   let rawTable = isRegional ? (ctx.state.regionalTables?.[tableKey] || []) : (ctx.state.tables?.[tableKey] || []);
@@ -81,11 +81,14 @@ export function renderLeagueView(container, ctx) {
   let selectorButtons = '';
   if (isRegional) {
     selectorButtons = `
-      <select onchange="setSelectedRegionalCup(this.value)" style="margin-bottom: 12px; font-weight: 700;">
-        ${Object.keys(REGIONAL_CUP_DEFINITIONS).map(cName => `
-          <option value="${cName}" ${ctx.selectedRegionalCup === cName ? 'selected' : ''}>${cName}</option>
-        `).join('')}
-      </select>
+      <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+        <span style="color: var(--text-muted); font-size: 11px; font-weight: 600;">SELECT CUP:</span>
+        <select onchange="setSelectedRegionalCup(this.value)" style="font-weight: 700; padding: 4px 8px;">
+          ${availableCups.map(cName => `
+            <option value="${cName}" ${ctx.selectedRegionalCup === cName ? 'selected' : ''}>${cName}</option>
+          `).join('')}
+        </select>
+      </div>
     `;
   } else {
     selectorButtons = `
@@ -102,7 +105,7 @@ export function renderLeagueView(container, ctx) {
     const rank = idx + 1;
     const totalTeams = sortedRows.length;
 
-    // Promotion / Relegation rules (4 up / 4 down)
+    // Promotion & Relegation rules (4 up / 4 down)
     const isPromoted = (!isRegional && ctx.tableDiv > 1 && rank <= 4);
     const isRelegated = (!isRegional && ctx.tableDiv < 10 && rank > totalTeams - 4);
     const isChampion = (rank === 1);
