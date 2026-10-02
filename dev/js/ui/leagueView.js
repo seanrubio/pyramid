@@ -4,13 +4,11 @@ export function renderLeagueView(container, ctx) {
   if (!ctx.activeCompetitionView) ctx.activeCompetitionView = 'league';
   if (!ctx.leagueLeaderTab) ctx.leagueLeaderTab = 'boot';
 
-  // Discover available regional cup names dynamically from state
   const availableCups = Object.keys(ctx.state.regionalTables || {}).sort();
   if (!ctx.selectedRegionalCup || !ctx.state.regionalTables?.[ctx.selectedRegionalCup]) {
     ctx.selectedRegionalCup = availableCups[0] || 'North American Cup';
   }
 
-  // Current calendar tracking for the fixtures sub-panel
   const currentWeek = ctx.state.week || 1;
   const viewedWeek = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentWeek;
 
@@ -32,13 +30,14 @@ export function renderLeagueView(container, ctx) {
   if (ctx.activeCompetitionView === 'cup') {
     const rounds = ctx.state.cupState?.rounds || [];
     const roundLabels = ['Round 1', 'Round 2', 'Round 3', 'Round 4', 'Quarterfinals', 'Semifinals', 'Final'];
+    const activeCupTab = ctx.selectedCupRoundTab || 0;
 
     container.innerHTML = `
       ${compTabsHtml}
       <div style="display: flex; flex-direction: column; gap: 16px;">
         <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;">
           ${roundLabels.map((lbl, idx) => `
-            <button onclick="selectCupRoundTab(${idx})" style="padding: 3px 10px; font-size: 11px; ${(ctx.selectedCupRoundTab || 0) === idx ? 'border-color: var(--accent); color: var(--accent); font-weight: 700;' : ''}">
+            <button onclick="selectCupRoundTab(${idx})" style="padding: 3px 10px; font-size: 11px; ${activeCupTab === idx ? 'border-color: var(--accent); color: var(--accent); font-weight: 700;' : ''}">
               ${lbl.toUpperCase()}
             </button>
           `).join('')}
@@ -46,11 +45,11 @@ export function renderLeagueView(container, ctx) {
 
         <div class="panel" style="padding: 12px;">
           <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px;">
-            ${(rounds[ctx.selectedCupRoundTab || 0] || []).length === 0 ? `
+            ${(rounds[activeCupTab] || []).length === 0 ? `
               <div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: var(--text-muted);">
                 Ties have not been drawn yet for this round.
               </div>
-            ` : (rounds[ctx.selectedCupRoundTab || 0] || []).map(m => {
+            ` : (rounds[activeCupTab] || []).map(m => {
               const hTeam = ctx.state.teams[m.home];
               const aTeam = ctx.state.teams[m.away];
               const hName = hTeam ? hTeam.name : 'TBD';
@@ -109,7 +108,6 @@ export function renderLeagueView(container, ctx) {
     const rank = idx + 1;
     const totalTeams = sortedRows.length;
 
-    // Promotion & Relegation rules (4 up / 4 down)
     const isPromoted = (!isRegional && ctx.tableDiv > 1 && rank <= 4);
     const isRelegated = (!isRegional && ctx.tableDiv < 10 && rank > totalTeams - 4);
     const isChampion = (rank === 1);
@@ -245,7 +243,7 @@ export function renderLeagueView(container, ctx) {
       <div class="panel" style="padding: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
           <strong style="color: #fff; font-size: 12px;">WEEK ${viewedWeek} FIXTURES</strong>
-          <div style="display: flex; gap: 4px;">
+          <div style="display: gap: 4px;">
             <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${viewedWeek <= 1 ? 'disabled' : ''}>&lt;</button>
             <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${viewedWeek >= 52 ? 'disabled' : ''}>&gt;</button>
           </div>
@@ -275,23 +273,17 @@ export function setLeagueLeaderTab(cat, ctx, renderLayout) {
   renderLayout();
 }
 
-export function setCompetitionView(mode) {
-  window.context.activeCompetitionView = mode;
-  window.renderLayout();
+export function setCompetitionView(mode, ctx, renderLayout) {
+  ctx.activeCompetitionView = mode;
+  renderLayout();
 }
 
-export function setSelectedRegionalCup(cupName) {
-  window.context.selectedRegionalCup = cupName;
-  window.renderLayout();
+export function setSelectedRegionalCup(cupName, ctx, renderLayout) {
+  ctx.selectedRegionalCup = cupName;
+  renderLayout();
 }
 
-export function selectCupRoundTab(roundIdx) {
-  window.context.selectedCupRoundTab = roundIdx;
-  window.renderLayout();
+export function selectCupRoundTab(roundIdx, ctx, renderLayout) {
+  ctx.selectedCupRoundTab = roundIdx;
+  renderLayout();
 }
-
-Object.assign(window, {
-  setCompetitionView,
-  setSelectedRegionalCup,
-  selectCupRoundTab
-});
