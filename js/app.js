@@ -5,6 +5,7 @@ import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView
 import { renderMatchView, changeMatchRound, resetToCurrentMatchRound, setMatchReportSide } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
 import { renderLeagueView, setLeagueDiv, changeLeagueRound, setLeagueLeaderTab } from './ui/leagueView.js';
+import { renderStatsView, setStatsViewMode, sortStatsView, setStatsPage, toggleStatsDropdown, toggleStatsMetric, resetStatsMetrics, toggleStatsDiv, setAllStatsDivs, toggleStatsTrait, setStatsTraitMode, clearStatsTraits, toggleStatsPhase,  toggleStatsArchetype,  clearStatsArchetypes, setStatsMinMinutes,  setStatsAgeRange, resetAllStatsFilters} from './ui/statsView.js';
 
 export const context = {
   DB: null,
@@ -21,7 +22,7 @@ export const context = {
 };
 
 export function saveGameState() {
-  try { localStorage.setItem('apex_wpm_save', JSON.stringify(context.state)); } catch(e) {}
+  try { localStorage.setItem('apex_wpm_save_dev', JSON.stringify(context.state)); } catch(e) {}
 }
 
 export function inspectTeam(teamId, targetTab = null) {
@@ -68,7 +69,7 @@ export function handleStartNewSeason() {
 
 export function resetGameDatabase() {
   if (confirm("Reset current career save and restart with defaults?")) {
-    localStorage.removeItem('apex_wpm_save');
+    localStorage.removeItem('apex_wpm_save_dev');
     location.reload();
   }
 }
@@ -172,7 +173,7 @@ export function renderLayout() {
         </div>
       </div>
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 6px;">
-        ${['squad', 'tactics', 'match', 'fixtures', 'league'].map(tab => `
+        ${['squad', 'tactics', 'match', 'fixtures', 'league', 'stats'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${context.activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -187,6 +188,7 @@ export function renderLayout() {
   else if (context.activeTab === 'match') renderMatchView(ws, context);
   else if (context.activeTab === 'fixtures') renderFixturesView(ws, context);
   else if (context.activeTab === 'league') renderLeagueView(ws, context);
+  else if (context.activeTab === 'stats') renderStatsView(ws, context);
 }
 
 Object.assign(window, {
@@ -207,16 +209,33 @@ Object.assign(window, {
   setMatchReportSide: (side) => setMatchReportSide(side, context, renderLayout),
   setLeagueDiv: (d) => setLeagueDiv(d, context, renderLayout),
   changeLeagueRound: (delta) => changeLeagueRound(delta, context, renderLayout),
-  setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout)
+  setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout), 
+  setStatsViewMode: (mode) => setStatsViewMode(mode, context, renderLayout),
+  sortStatsView: (key) => sortStatsView(key, context, renderLayout),
+  setStatsPage: (p) => setStatsPage(p, context, renderLayout),
+  toggleStatsDropdown: (name) => toggleStatsDropdown(name, context, renderLayout),
+  toggleStatsMetric: (mId) => toggleStatsMetric(mId, context, renderLayout),
+  resetStatsMetrics: () => resetStatsMetrics(context, renderLayout),
+  toggleStatsDiv: (d) => toggleStatsDiv(d, context, renderLayout),
+  setAllStatsDivs: (all) => setAllStatsDivs(all, context, renderLayout),
+  toggleStatsTrait: (t) => toggleStatsTrait(t, context, renderLayout),
+  setStatsTraitMode: (m) => setStatsTraitMode(m, context, renderLayout),
+  clearStatsTraits: () => clearStatsTraits(context, renderLayout),
+  toggleStatsPhase: (ph, q) => toggleStatsPhase(ph, q, context, renderLayout),
+  toggleStatsArchetype: (arc) => toggleStatsArchetype(arc, context, renderLayout),
+  clearStatsArchetypes: () => clearStatsArchetypes(context, renderLayout),
+  setStatsMinMinutes: (val) => setStatsMinMinutes(val, context, renderLayout),
+  setStatsAgeRange: (min, max) => setStatsAgeRange(min, max, context, renderLayout),
+  resetAllStatsFilters: () => resetAllStatsFilters(context, renderLayout)
 });
 
 async function boot() {
   try {
-    const res = await fetch('./data.json');
+    const res = await fetch('../data.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     context.DB = await res.json();
 
-    const saved = localStorage.getItem('apex_wpm_save');
+    const saved = localStorage.getItem('apex_wpm_save_dev');
     if (saved) {
       context.state = JSON.parse(saved);
       if (!context.state.config) context.state.config = { units: 'imperial' };
