@@ -75,7 +75,7 @@ export function renderFixturesView(container, ctx) {
                 const oppXg = isHome ? match.axg : match.hxg;
 
                 scoreDisplay = `
-                  <button onclick="openMatchReport('${match.home}',${week})" 
+                  <button onclick="openMatchReport('${match.home}', ${week},${moment})" 
                           title="View Match Report"
                           style="padding: 2px 8px; font-family: monospace; font-size: 11px; font-weight: 700; background: rgba(88, 166, 255, 0.1); border: 1px solid var(--border); color: #fff; cursor: pointer; border-radius: 3px;">
                     ${teamG}&nbsp;–&nbsp;${oppG}
