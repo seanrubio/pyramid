@@ -211,24 +211,25 @@ export function renderLayout() {
     currentSlot.matches.some(m => m.home === context.state.userTeamId || m.away === context.state.userTeamId);
 
   const buttonText = isSeasonOver ? 'START NEW SEASON' : (hasUserMatch ? 'PLAY MATCH' : 'ADVANCE');
-  const phaseName = getCalendarPhaseName(context.state);
+  
+  const MOMENT_NAMES = { 1: 'Early', 2: 'Mid', 3: 'Late', 4: 'End' };
+  const tickName = MOMENT_NAMES[context.state.moment] || 'Early';
 
   document.getElementById('app-root').innerHTML = `
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
       <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
         <div style="display: flex; align-items: center; gap: 10px;">
           <strong style="color: #fff; font-size: 14px;">${activeTeam.name}</strong>
-          <span style="color: var(--accent); font-size: 12px; font-weight: 700;">DIV ${activeTeam.div}</span>
           ${isViewingOtherClub ? `
             <button onclick="inspectTeam('${context.state.userTeamId}')" style="background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: var(--accent); padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700; cursor: pointer;">
               RETURN TO ${userTeam.name.toUpperCase()}
             </button>
           ` : ''}
-          <span style="color: var(--text-muted); font-size: 12px; margin-left: 6px;">
-            S${context.state.season} • ${isSeasonOver ? '<strong style="color: var(--accent);">SEASON COMPLETE</strong>' : `Week ${context.state.week}/52 (${phaseName})`}
-          </span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="color: var(--text-muted); font-size: 12px;">
+            ${isSeasonOver ? '<strong style="color: var(--accent);">SEASON COMPLETE</strong>' : `S${context.state.season} • Week ${context.state.week} (${tickName})`}
+          </span>
           ${isSeasonOver ? `
             <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
           ` : `
