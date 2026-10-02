@@ -1,5 +1,5 @@
 import { FORMATIONS } from '../constants.js';
-import { getCurrentCalendarSlot, sortTableEntries } from '../engine.js';
+import { sortTableEntries } from '../engine.js';
 
 export function renderMatchView(container, ctx) {
   const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
@@ -8,107 +8,63 @@ export function renderMatchView(container, ctx) {
 
   if (!ctx.matchReportSide) ctx.matchReportSide = 'home';
 
-  let targetFixture = null;
-  let targetCompName = '';
-  let matchWeekNumber = null;
-  let isViewingHistorical = false;
-
-  // 1. If viewing a historical match report via openMatchReport() or after recent simulation
-  if (ctx.viewedMatchRound !== null) {
-    const weekSlots = calendar[ctx.viewedMatchRound] || {};
-    const targetMoment = ctx.viewedMatchMoment || null;
-
+  // 1. Compile the complete, ordered chronological match ledger for this club
+  const clubMatches = [];
+  for (let w = 1; w <= 52; w++) {
+    const weekSlots = calendar[w] || {};
     for (let m = 1; m <= 4; m++) {
-      if (targetMoment !== null && m !== targetMoment) continue;
       const slot = weekSlots[m];
       if (slot && slot.type === 'match' && slot.matches) {
         const fix = slot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
-        if (fix && fix.played) {
-          targetFixture = fix;
-          targetCompName = fix.cupName || slot.cupRoundName || `Division ${activeTeam.div}`;
-          matchWeekNumber = ctx.viewedMatchRound;
-          isViewingHistorical = true;
-          break;
+        if (fix) {
+          clubMatches.push({
+            idx: clubMatches.length,
+            week: w,
+            moment: m,
+            fixture: fix,
+            comp: fix.comp || slot.comp,
+            compName: fix.cupName || slot.cupRoundName || `Division ${activeTeam.div}`
+          });
         }
       }
     }
   }
 
-  // 2. If the user just simulated a match in this moment and hasn't navigated away, show that match
-  if (!targetFixture && ctx.state.lastSimulatedMatch && (ctx.state.lastSimulatedMatch.home === activeTeamId || ctx.state.lastSimulatedMatch.away === activeTeamId)) {
-    targetFixture = ctx.state.lastSimulatedMatch;
-    targetCompName = targetFixture.cupName || targetFixture.compName || `Division ${activeTeam.div}`;
-    matchWeekNumber = targetFixture.weekNumber || ctx.state.week;
-  }
-
-  // 3. Otherwise, check current moment slot
-  if (!targetFixture) {
-    const currentSlot = getCurrentCalendarSlot(ctx.state);
-    if (currentSlot && currentSlot.type === 'match' && currentSlot.matches) {
-      targetFixture = currentSlot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
-      if (targetFixture) {
-        targetCompName = targetFixture.cupName || currentSlot.cupRoundName || `Division ${activeTeam.div}`;
-        matchWeekNumber = ctx.state.week;
-      }
-    }
-  }
-
-  // 4. If off-fixture, locate the NEXT upcoming match across the calendar to scout
-  let nextMatchMeta = null;
-  if (!targetFixture) {
-    for (let w = ctx.state.week; w <= 52; w++) {
-      const weekSlots = calendar[w] || {};
-      for (let m = (w === ctx.state.week ? ctx.state.moment : 1); m <= 4; m++) {
-        const slot = weekSlots[m];
-        if (slot && slot.type === 'match' && slot.matches) {
-          const fix = slot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
-          if (fix && !fix.played) {
-            targetFixture = fix;
-            targetCompName = fix.cupName || slot.cupRoundName || `Division ${activeTeam.div}`;
-            nextMatchMeta = { week: w, moment: m };
-            matchWeekNumber = w;
-            break;
-          }
-        }
-      }
-      if (targetFixture) break;
-    }
-  }
-
-  // 5. Transfer Window banner if no upcoming match found
-  const currentSlot = getCurrentCalendarSlot(ctx.state);
-  if (!targetFixture && currentSlot && currentSlot.type === 'window') {
+  if (clubMatches.length === 0) {
     container.innerHTML = `
-      <div class="panel" style="padding: 32px; text-align: center;">
-        <h2 style="color: var(--accent); margin-top: 0;">${currentSlot.name.toUpperCase()}</h2>
-        <p style="color: var(--text-muted); font-size: 13px;">${currentSlot.subtext}</p>
-        <span style="display: inline-block; margin-top: 12px; font-size: 11px; color: var(--text-muted);">
-          Advance moments to complete window operations. Live fixtures begin in Week 5.
-        </span>
+      <div class="panel" style="padding: 32px; text-align: center; color: var(--text-muted);">
+        No scheduled matches found across the calendar for ${activeTeam.name}.
       </div>
     `;
     return;
   }
 
-  if (!targetFixture) {
-    container.innerHTML = `
-      <div class="panel" style="padding: 24px; text-align: center; color: var(--text-muted);">
-        No upcoming fixtures scheduled for ${activeTeam.name}.
-      </div>
-    `;
-    return;
+  // 2. Identify the active / upcoming match index
+  let defaultIdx = clubMatches.findIndex(item => !item.fixture.played);
+  if (defaultIdx === -1) defaultIdx = clubMatches.length - 1;
+
+  // If user navigated via openMatchReport(homeTeamId, week, moment)
+  if (ctx.viewedMatchRound !== null && ctx.viewedMatchNavIndex === undefined) {
+    const foundIdx = clubMatches.findIndex(item => item.week === ctx.viewedMatchRound && (ctx.viewedMatchMoment === null || item.moment === ctx.viewedMatchMoment));
+    if (foundIdx !== -1) ctx.viewedMatchNavIndex = foundIdx;
   }
 
+  const currentNavIdx = (ctx.viewedMatchNavIndex !== null && ctx.viewedMatchNavIndex !== undefined)
+    ? Math.max(0, Math.min(clubMatches.length - 1, ctx.viewedMatchNavIndex))
+    : defaultIdx;
+
+  const currentItem = clubMatches[currentNavIdx];
+  const targetFixture = currentItem.fixture;
   const isHome = (targetFixture.home === activeTeamId);
   const homeTeam = ctx.state.teams[targetFixture.home] || { name: 'Home Club' };
   const awayTeam = ctx.state.teams[targetFixture.away] || { name: 'Away Club' };
   const oppId = isHome ? targetFixture.away : targetFixture.home;
   const oppTeam = isHome ? awayTeam : homeTeam;
 
-  // Standings data for scouting
-  const isRegional = (targetFixture.comp === 'regional' && targetFixture.cupName);
+  // Opposition profile and standings for scouting
+  const isRegional = (currentItem.comp === 'regional' && currentItem.fixture.cupName);
   const rawTable = isRegional
-    ? (ctx.state.regionalTables?.[targetFixture.cupName] || [])
+    ? (ctx.state.regionalTables?.[currentItem.fixture.cupName] || [])
     : (ctx.state.tables?.[oppTeam.div] || []);
   const sortedTable = sortTableEntries(rawTable);
   const oppRank = sortedTable.findIndex(r => r.teamId === oppId) + 1;
@@ -243,7 +199,7 @@ export function renderMatchView(container, ctx) {
         </div>
       </div>
 
-      <!-- Match Breakdown: Comparison Bar on Left, Box Score on Right -->
+      <!-- Match Breakdown: Comparison Bar on Left, Single Box Score on Right -->
       <div style="display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;">
         <div class="panel" style="padding: 12px;">
           <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
@@ -260,6 +216,7 @@ export function renderMatchView(container, ctx) {
           </div>
         </div>
 
+        <!-- Box Score Column with Pill Switcher -->
         <div class="panel" style="overflow-x: auto; padding: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px;">
             <strong style="color: #fff; font-size: 12px; text-transform: uppercase;">PLAYER PERFORMANCE</strong>
@@ -298,21 +255,32 @@ export function renderMatchView(container, ctx) {
   };
 
   container.innerHTML = `
-    <!-- Top Action Bar (if viewing concluded match, show Return button) -->
-    ${targetFixture.played ? `
-      <div class="panel" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; margin-bottom: 16px;">
-        <span style="font-size: 11px; color: var(--accent); font-weight: 700;">MATCH CONCLUDED</span>
-        <button onclick="resetToCurrentMatchRound()" class="primary" style="padding: 3px 10px; font-size: 11px; font-weight: 700;">
-          SCOUT UPCOMING FIXTURE &gt;
-        </button>
+    <!-- Top Interactive Fixture Navigation Bar -->
+    <div class="panel" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button onclick="changeMatchRound(-1)" style="padding: 2px 10px;" ${currentNavIdx <= 0 ? 'disabled' : ''}>&lt;</button>
+        <strong style="color: #fff; font-size: 13px;">MATCH ${currentNavIdx + 1} OF ${clubMatches.length} <span style="color: var(--text-muted); font-size: 11px; margin-left: 4px;">(W${currentItem.week}.M${currentItem.moment})</span></strong>
+        <button onclick="changeMatchRound(1)" style="padding: 2px 10px;" ${currentNavIdx >= clubMatches.length - 1 ? 'disabled' : ''}>&gt;</button>
       </div>
-    ` : ''}
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+        ${currentNavIdx !== defaultIdx ? `
+          <button onclick="resetToCurrentMatchRound()" class="primary" style="padding: 2px 10px; font-size: 11px; font-weight: 700;">
+            RETURN TO NEXT UP FIXTURE
+          </button>
+        ` : `
+          <span style="font-size: 11px; color: ${targetFixture.played ? 'var(--text-muted)' : 'var(--accent)'}; font-weight: 700; text-transform: uppercase;">
+            ${targetFixture.played ? 'MATCH CONCLUDED' : 'UPCOMING FIXTURE'}
+          </span>
+        `}
+      </div>
+    </div>
 
     <!-- Match Header Banner -->
     <div class="panel" style="padding: 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
       <div>
         <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px;">
-          ${targetCompName} • ${isHome ? 'HOME FIXTURE' : 'AWAY FIXTURE'} ${nextMatchMeta ? `<span style="color: var(--accent); margin-left: 6px;">[SCHEDULED: WEEK ${nextMatchMeta.week}]</span>` : ''}
+          ${currentItem.compName} • ${isHome ? 'HOME FIXTURE' : 'AWAY FIXTURE'}
         </div>
         <h2 style="font-size: 24px; margin: 0; color: #fff; cursor: pointer;" onclick="inspectTeam('${oppId}', 'squad')">
           ${oppTeam.name}
@@ -401,11 +369,40 @@ export function setMatchReportSide(side, ctx, renderLayout) {
   renderLayout();
 }
 
-export function changeMatchRound() {}
+export function changeMatchRound(delta, ctx, renderLayout) {
+  const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
+  const calendar = ctx.state.calendar || {};
 
-export function resetToCurrentMatchRound(ctx, renderLayout) {
+  const clubMatches = [];
+  for (let w = 1; w <= 52; w++) {
+    const weekSlots = calendar[w] || {};
+    for (let m = 1; m <= 4; m++) {
+      const slot = weekSlots[m];
+      if (slot && slot.type === 'match' && slot.matches) {
+        const fix = slot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
+        if (fix) clubMatches.push({ week: w, moment: m });
+      }
+    }
+  }
+
+  if (clubMatches.length === 0) return;
+
+  let defaultIdx = clubMatches.findIndex(item => !item.played);
+  if (defaultIdx === -1) defaultIdx = clubMatches.length - 1;
+
+  const currentIdx = (ctx.viewedMatchNavIndex !== null && ctx.viewedMatchNavIndex !== undefined)
+    ? ctx.viewedMatchNavIndex
+    : defaultIdx;
+
+  ctx.viewedMatchNavIndex = Math.max(0, Math.min(clubMatches.length - 1, currentIdx + delta));
   ctx.viewedMatchRound = null;
   ctx.viewedMatchMoment = null;
-  if (ctx.state) ctx.state.lastSimulatedMatch = null;
+  renderLayout();
+}
+
+export function resetToCurrentMatchRound(ctx, renderLayout) {
+  ctx.viewedMatchNavIndex = null;
+  ctx.viewedMatchRound = null;
+  ctx.viewedMatchMoment = null;
   renderLayout();
 }
