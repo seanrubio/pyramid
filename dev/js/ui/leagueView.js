@@ -10,6 +10,10 @@ export function renderLeagueView(container, ctx) {
     ctx.selectedRegionalCup = availableCups[0] || 'North American Cup';
   }
 
+  // Current calendar tracking for the fixtures sub-panel
+  const currentWeek = ctx.state.week || 1;
+  const viewedWeek = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentWeek;
+
   const compTabsHtml = `
     <div style="display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
       <button onclick="setCompetitionView('league')" style="font-weight: 700; ${ctx.activeCompetitionView === 'league' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
@@ -145,54 +149,129 @@ export function renderLeagueView(container, ctx) {
     `;
   }).join('');
 
+  // Collect fixtures for the selected week across this division / cup
+  const weekSlots = ctx.state.calendar?.[viewedWeek] || {};
+  const weekMatches = [];
+  [1, 2, 3, 4].forEach(m => {
+    const slot = weekSlots[m];
+    if (slot && slot.type === 'match' && slot.matches) {
+      slot.matches.forEach(fix => {
+        if (!isRegional && (fix.div === ctx.tableDiv || (!fix.div && ctx.state.teams[fix.home]?.div === ctx.tableDiv))) {
+          weekMatches.push(fix);
+        } else if (isRegional && fix.cupName === ctx.selectedRegionalCup) {
+          weekMatches.push(fix);
+        }
+      });
+    }
+  });
+
+  const fixturesHtml = weekMatches.length > 0 ? weekMatches.map(m => {
+    const isUserMatch = (m.home === ctx.state.userTeamId || m.away === ctx.state.userTeamId);
+    const homeName = ctx.state.teams[m.home]?.name || 'Unknown';
+    const awayName = ctx.state.teams[m.away]?.name || 'Unknown';
+
+    return `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 3px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid var(--border);">
+        <div style="flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px;">
+          <span onclick="inspectTeam('${m.home}', 'squad')" style="cursor: pointer; font-size: 11px;">${homeName}</span>
+        </div>
+        <div style="min-width: 68px; text-align: center; display: flex; flex-direction: column; align-items: center;">
+          ${m.played ? `
+            <button onclick="openMatchReport('${m.home}',${viewedWeek})" 
+                    title="View Match Report"
+                    style="padding: 1px 6px; font-family: monospace; font-size: 11px; font-weight: 700; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: #fff; cursor: pointer; border-radius: 3px;">
+              ${m.hg}–${m.ag}
+            </button>
+            <span style="font-family: monospace; font-size: 9px; color: var(--text-muted); margin-top: 2px;">${m.hxg.toFixed(1)}–${m.axg.toFixed(1)}</span>
+          ` : `<span style="font-family: monospace; font-size: 10px; color: var(--text-muted);">vs</span>`}
+        </div>
+        <div style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 6px;">
+          <span onclick="inspectTeam('${m.away}', 'squad')" style="cursor: pointer; font-size: 11px;">${awayName}</span>
+        </div>
+      </div>
+    `;
+  }).join('') : `
+    <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
+      No fixtures scheduled for Week ${viewedWeek}.
+    </div>
+  `;
+
   container.innerHTML = `
     ${compTabsHtml}
     ${selectorButtons}
 
-    <div class="panel" style="overflow-x: auto;">
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 28px; text-align: center;">#</th>
-            <th>Club</th>
-            <th style="text-align: center; width: 28px;">P</th>
-            <th style="text-align: center; width: 28px;">W</th>
-            <th style="text-align: center; width: 28px;">D</th>
-            <th style="text-align: center; width: 28px;">L</th>
-            <th style="text-align: center; width: 30px;">GD</th>
-            <th style="text-align: center; width: 38px;">xGD</th>
-            <th style="text-align: right; width: 34px; font-weight: 700; color: #fff;">PTS</th>
-            <th style="text-align: right; width: 38px; color: var(--text-muted);">PPG</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${tableRowsHtml}
-        </tbody>
-      </table>
+    <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start;">
+      <div class="panel" style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 28px; text-align: center;">#</th>
+              <th>Club</th>
+              <th style="text-align: center; width: 28px;">P</th>
+              <th style="text-align: center; width: 28px;">W</th>
+              <th style="text-align: center; width: 28px;">D</th>
+              <th style="text-align: center; width: 28px;">L</th>
+              <th style="text-align: center; width: 30px;">GD</th>
+              <th style="text-align: center; width: 38px;">xGD</th>
+              <th style="text-align: right; width: 34px; font-weight: 700; color: #fff;">PTS</th>
+              <th style="text-align: right; width: 38px; color: var(--text-muted);">PPG</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRowsHtml}
+          </tbody>
+        </table>
 
-      ${!isRegional ? `
-        <div style="display: flex; gap: 16px; padding: 10px 12px; font-size: 11px; border-top: 1px solid var(--border); color: var(--text-muted);">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="display: inline-block; width: 10px; height: 10px; background: #e3b341; border-radius: 2px;"></span> Champion
+        ${!isRegional ? `
+          <div style="display: flex; gap: 16px; padding: 10px 12px; font-size: 11px; border-top: 1px solid var(--border); color: var(--text-muted);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="display: inline-block; width: 10px; height: 10px; background: #e3b341; border-radius: 2px;"></span> Champion
+            </div>
+            ${ctx.tableDiv > 1 ? `
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: var(--green, #3fb950); border-radius: 2px;"></span> Promotion (Top 4)
+              </div>
+            ` : ''}
+            ${ctx.tableDiv < 10 ? `
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: var(--red, #f85149); border-radius: 2px;"></span> Relegation (Bottom 4)
+              </div>
+            ` : ''}
           </div>
-          ${ctx.tableDiv > 1 ? `
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="display: inline-block; width: 10px; height: 10px; background: var(--green, #3fb950); border-radius: 2px;"></span> Promotion (Top 4)
-            </div>
-          ` : ''}
-          ${ctx.tableDiv < 10 ? `
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="display: inline-block; width: 10px; height: 10px; background: var(--red, #f85149); border-radius: 2px;"></span> Relegation (Bottom 4)
-            </div>
-          ` : ''}
+        ` : ''}
+      </div>
+
+      <!-- Right Column: Week Fixtures Browser -->
+      <div class="panel" style="padding: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
+          <strong style="color: #fff; font-size: 12px;">WEEK ${viewedWeek} FIXTURES</strong>
+          <div style="display: flex; gap: 4px;">
+            <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${viewedWeek <= 1 ? 'disabled' : ''}>&lt;</button>
+            <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${viewedWeek >= 52 ? 'disabled' : ''}>&gt;</button>
+          </div>
         </div>
-      ` : ''}
+        <div style="display: flex; flex-direction: column; gap: 3px;">
+          ${fixturesHtml}
+        </div>
+      </div>
     </div>
   `;
 }
 
 export function setLeagueDiv(d, ctx, renderLayout) {
   ctx.tableDiv = d;
+  renderLayout();
+}
+
+export function changeLeagueRound(delta, ctx, renderLayout) {
+  const currentWeek = ctx.state.week || 1;
+  const curr = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentWeek;
+  ctx.viewedFixtureRound = Math.max(1, Math.min(52, curr + delta));
+  renderLayout();
+}
+
+export function setLeagueLeaderTab(cat, ctx, renderLayout) {
+  ctx.leagueLeaderTab = cat;
   renderLayout();
 }
 
