@@ -30,6 +30,7 @@ export const context = {
   viewedFixtureRound: null,
   viewedMatchRound: null,
   viewedMatchMoment: null,
+  viewedMatchNavIndex: null,
   squadSort: { key: 'slot', asc: true },
   tableSort: { key: 'pts', asc: false }
 };
@@ -44,6 +45,7 @@ export function inspectTeam(teamId, targetTab = null) {
   if (targetTab) context.activeTab = targetTab;
   context.viewedMatchRound = null;
   context.viewedMatchMoment = null;
+  context.viewedMatchNavIndex = null;
   context.viewedFixtureRound = null;
   renderLayout();
 }
@@ -52,6 +54,7 @@ export function openMatchReport(homeTeamId, week, moment = null) {
   context.viewedTeamId = homeTeamId;
   context.viewedMatchRound = week;
   context.viewedMatchMoment = moment;
+  context.viewedMatchNavIndex = null;
   context.activeTab = 'match';
   renderLayout();
 }
@@ -71,22 +74,20 @@ export function handleSimRound() {
     userFixture = currentSlot.matches.find(m => m.home === userTeamId || m.away === userTeamId);
   }
 
-  const currentW = context.state.week;
+  const prevW = context.state.week;
+  const prevM = context.state.moment;
 
   if (advanceMomentSimulation(context.state)) {
-    // If the user's club played, preserve that completed fixture for matchView
+    // If user's club played, lock onto this finished fixture so post-match report is displayed
     if (userFixture && userFixture.played) {
-      userFixture.weekNumber = currentW;
-      context.state.lastSimulatedMatch = userFixture;
+      context.viewedMatchRound = prevW;
+      context.viewedMatchMoment = prevM;
+      context.viewedMatchNavIndex = null;
       context.activeTab = 'match';
-    } else {
-      context.state.lastSimulatedMatch = null;
     }
 
     saveGameState();
     context.viewedFixtureRound = null;
-    context.viewedMatchRound = null;
-    context.viewedMatchMoment = null;
     renderLayout();
   }
 }
@@ -98,6 +99,7 @@ export function handleStartNewSeason() {
     context.viewedFixtureRound = null;
     context.viewedMatchRound = null;
     context.viewedMatchMoment = null;
+    context.viewedMatchNavIndex = null;
     renderLayout();
   }
 }
@@ -180,6 +182,7 @@ function initializeDefaultCareer() {
   context.viewedFixtureRound = null;
   context.viewedMatchRound = null;
   context.viewedMatchMoment = null;
+  context.viewedMatchNavIndex = null;
 
   context.state = {
     season: 1,
@@ -191,8 +194,7 @@ function initializeDefaultCareer() {
     tables,
     regionalTables,
     cupState,
-    calendar,
-    lastSimulatedMatch: null
+    calendar
   };
 
   saveGameState();
