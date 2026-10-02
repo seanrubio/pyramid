@@ -29,6 +29,7 @@ export const context = {
   viewedTeamId: null,
   viewedFixtureRound: null,
   viewedMatchRound: null,
+  viewedMatchMoment: null,
   squadSort: { key: 'slot', asc: true },
   tableSort: { key: 'pts', asc: false }
 };
@@ -42,13 +43,15 @@ export function inspectTeam(teamId, targetTab = null) {
   context.viewedTeamId = teamId;
   if (targetTab) context.activeTab = targetTab;
   context.viewedMatchRound = null;
+  context.viewedMatchMoment = null;
   context.viewedFixtureRound = null;
   renderLayout();
 }
 
-export function openMatchReport(homeTeamId, round) {
+export function openMatchReport(homeTeamId, week, moment = null) {
   context.viewedTeamId = homeTeamId;
-  context.viewedMatchRound = round;
+  context.viewedMatchRound = week;
+  context.viewedMatchMoment = moment;
   context.activeTab = 'match';
   renderLayout();
 }
@@ -56,15 +59,34 @@ export function openMatchReport(homeTeamId, round) {
 export function switchTab(tab) {
   context.activeTab = tab;
   if (tab === 'league') context.viewedFixtureRound = null;
-  if (tab === 'match') context.viewedMatchRound = null;
   renderLayout();
 }
 
 export function handleSimRound() {
+  const currentSlot = getCurrentCalendarSlot(context.state);
+  const userTeamId = context.state.userTeamId;
+  let userFixture = null;
+
+  if (currentSlot && currentSlot.type === 'match' && currentSlot.matches) {
+    userFixture = currentSlot.matches.find(m => m.home === userTeamId || m.away === userTeamId);
+  }
+
+  const currentW = context.state.week;
+
   if (advanceMomentSimulation(context.state)) {
+    // If the user's club played, preserve that completed fixture for matchView
+    if (userFixture && userFixture.played) {
+      userFixture.weekNumber = currentW;
+      context.state.lastSimulatedMatch = userFixture;
+      context.activeTab = 'match';
+    } else {
+      context.state.lastSimulatedMatch = null;
+    }
+
     saveGameState();
     context.viewedFixtureRound = null;
     context.viewedMatchRound = null;
+    context.viewedMatchMoment = null;
     renderLayout();
   }
 }
@@ -75,6 +97,7 @@ export function handleStartNewSeason() {
     saveGameState();
     context.viewedFixtureRound = null;
     context.viewedMatchRound = null;
+    context.viewedMatchMoment = null;
     renderLayout();
   }
 }
@@ -156,6 +179,7 @@ function initializeDefaultCareer() {
   context.viewedTeamId = userTeamId;
   context.viewedFixtureRound = null;
   context.viewedMatchRound = null;
+  context.viewedMatchMoment = null;
 
   context.state = {
     season: 1,
@@ -167,7 +191,8 @@ function initializeDefaultCareer() {
     tables,
     regionalTables,
     cupState,
-    calendar
+    calendar,
+    lastSimulatedMatch: null
   };
 
   saveGameState();
