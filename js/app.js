@@ -231,7 +231,7 @@ Object.assign(window, {
 
 async function boot() {
   try {
-    const res = await fetch('../data.json');
+    const res = await fetch('./data.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     context.DB = await res.json();
 
