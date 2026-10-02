@@ -25,7 +25,6 @@ export function renderFixturesView(container, ctx) {
             week: w,
             moment: m,
             isCurrent: (w === currentWeek && m === currentMoment),
-            isPast: (w < currentWeek || (w === currentWeek && m < currentMoment)),
             comp: match.comp || slot.comp,
             compName: match.cupName || slot.cupRoundName || `Division ${team.div}`,
             isHome,
@@ -51,7 +50,7 @@ export function renderFixturesView(container, ctx) {
           <thead>
             <tr>
               <th style="width: 55px; text-align: center;">Week</th>
-              <th style="width: 140px;">Competition</th>
+              <th style="width: 150px;">Competition</th>
               <th style="width: 45px; text-align: center;">H/A</th>
               <th>Opponent</th>
               <th style="width: 95px; text-align: center;">Result</th>
