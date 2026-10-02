@@ -1,11 +1,20 @@
 import { BLUEPRINT_PRESETS } from './constants.js';
-import { createFullSquad, autoAssignLineup, generateFixtures, runRoundSimulation, resetSeasonClean } from './engine.js';
+import { 
+  createFullSquad, 
+  autoAssignLineup, 
+  generateMasterCalendar, 
+  generateUniversalCupR1, 
+  advanceMomentSimulation, 
+  resetSeasonClean, 
+  getCurrentCalendarSlot, 
+  getCalendarPhaseName 
+} from './engine.js';
 import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadViewMode } from './ui/squadView.js';
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
 import { renderMatchView, changeMatchRound, resetToCurrentMatchRound, setMatchReportSide } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
 import { renderLeagueView, setLeagueDiv, changeLeagueRound, setLeagueLeaderTab } from './ui/leagueView.js';
-import { renderStatsView, setStatsViewMode, sortStatsView, setStatsPage, toggleStatsDropdown, toggleStatsMetric, resetStatsMetrics, toggleStatsDiv, setAllStatsDivs, toggleStatsTrait, setStatsTraitMode, clearStatsTraits, toggleStatsPhase,  toggleStatsArchetype,  clearStatsArchetypes, setStatsMinMinutes,  setStatsAgeRange, resetAllStatsFilters} from './ui/statsView.js';
+import { renderStatsView, setStatsViewMode, sortStatsView, setStatsPage, toggleStatsDropdown, toggleStatsMetric, resetStatsMetrics, toggleStatsDiv, setAllStatsDivs, toggleStatsTrait, setStatsTraitMode, clearStatsTraits, toggleStatsPhase, toggleStatsArchetype, clearStatsArchetypes, setStatsMinMinutes, setStatsAgeRange, resetAllStatsFilters } from './ui/statsView.js';
 
 export const context = {
   DB: null,
@@ -14,6 +23,8 @@ export const context = {
   squadViewMode: 'general',
   matchReportSide: 'home',
   tableDiv: 10,
+  activeCompetitionView: 'league',
+  selectedRegionalCup: 'North American Cup',
   viewedTeamId: null,
   viewedFixtureRound: null,
   viewedMatchRound: null,
@@ -49,7 +60,7 @@ export function switchTab(tab) {
 }
 
 export function handleSimRound() {
-  if (runRoundSimulation(context.state)) {
+  if (advanceMomentSimulation(context.state)) {
     saveGameState();
     context.viewedFixtureRound = null;
     context.viewedMatchRound = null;
@@ -83,6 +94,8 @@ function initializeDefaultCareer() {
     name: 'Oakland',
     country: 'US',
     div: 10,
+    region: 'north_america',
+    regionalCup: 'North American Cup',
     stadium: 'Oakland Coliseum',
     rep: 15,
     formation: '4-4-2 Flat',
@@ -102,6 +115,8 @@ function initializeDefaultCareer() {
       name: city.name,
       country: city.country,
       div: city.div,
+      region: city.region || 'anglo',
+      regionalCup: city.regional_cup || 'Universal Cup',
       stadium: city.stadium,
       rep: city.rep,
       formation: '4-4-2 Flat',
@@ -123,6 +138,19 @@ function initializeDefaultCareer() {
     }));
   }
 
+  const regionalTables = {};
+  Object.values(teams).forEach(t => {
+    if (t.regionalCup) {
+      if (!regionalTables[t.regionalCup]) regionalTables[t.regionalCup] = [];
+      regionalTables[t.regionalCup].push({
+        teamId: t.id, name: t.name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0, xg: 0.0, xga: 0.0, xgd: 0.0, form: []
+      });
+    }
+  });
+
+  const cupState = generateUniversalCupR1(teams);
+  const calendar = generateMasterCalendar(teams, cupState);
+
   context.tableDiv = 10;
   context.viewedTeamId = userTeamId;
   context.viewedFixtureRound = null;
@@ -130,13 +158,15 @@ function initializeDefaultCareer() {
 
   context.state = {
     season: 1,
-    round: 1,
-    maxRounds: 38,
+    week: 1,
+    moment: 1,
     config: { units: 'imperial' },
     userTeamId,
     teams,
     tables,
-    fixtures: generateFixtures(teams)
+    regionalTables,
+    cupState,
+    calendar
   };
 
   saveGameState();
@@ -146,7 +176,14 @@ export function renderLayout() {
   const userTeam = context.state.teams[context.state.userTeamId];
   const activeTeam = context.state.teams[context.viewedTeamId] || userTeam;
   const isViewingOtherClub = (activeTeam.id !== context.state.userTeamId);
-  const isSeasonOver = context.state.round > context.state.maxRounds;
+  const isSeasonOver = context.state.week > 52;
+  const currentSlot = getCurrentCalendarSlot(context.state);
+
+  const hasUserMatch = currentSlot && currentSlot.type === 'match' && currentSlot.matches &&
+    currentSlot.matches.some(m => m.home === context.state.userTeamId || m.away === context.state.userTeamId);
+
+  const buttonText = isSeasonOver ? 'START NEW SEASON' : (hasUserMatch ? 'PLAY MATCH' : 'ADVANCE');
+  const phaseName = getCalendarPhaseName(context.state);
 
   document.getElementById('app-root').innerHTML = `
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
@@ -160,14 +197,14 @@ export function renderLayout() {
             </button>
           ` : ''}
           <span style="color: var(--text-muted); font-size: 12px; margin-left: 6px;">
-            S${context.state.season} • ${isSeasonOver ? '<strong style="color: var(--accent);">SEASON COMPLETE</strong>' : `ROUND ${context.state.round}/${context.state.maxRounds}`}
+            S${context.state.season} • ${isSeasonOver ? '<strong style="color: var(--accent);">SEASON COMPLETE</strong>' : `Week ${context.state.week}/52 (${phaseName})`}
           </span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
           ${isSeasonOver ? `
             <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
           ` : `
-            <button onclick="handleSimRound()" class="primary">${context.state.round === context.state.maxRounds ? 'PLAY FINAL ROUND' : 'PLAY ROUND'}</button>
+            <button onclick="handleSimRound()" class="primary" style="${hasUserMatch ? 'background: #238636; border-color: #2ea043;' : ''}">${buttonText}</button>
           `}
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
@@ -209,7 +246,7 @@ Object.assign(window, {
   setMatchReportSide: (side) => setMatchReportSide(side, context, renderLayout),
   setLeagueDiv: (d) => setLeagueDiv(d, context, renderLayout),
   changeLeagueRound: (delta) => changeLeagueRound(delta, context, renderLayout),
-  setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout), 
+  setLeagueLeaderTab: (cat) => setLeagueLeaderTab(cat, context, renderLayout),
   setStatsViewMode: (mode) => setStatsViewMode(mode, context, renderLayout),
   sortStatsView: (key) => sortStatsView(key, context, renderLayout),
   setStatsPage: (p) => setStatsPage(p, context, renderLayout),
@@ -238,9 +275,12 @@ async function boot() {
     const saved = localStorage.getItem('apex_wpm_save_dev');
     if (saved) {
       context.state = JSON.parse(saved);
-      if (!context.state.config) context.state.config = { units: 'imperial' };
-      context.viewedTeamId = context.state.userTeamId;
-      context.tableDiv = context.state.teams[context.state.userTeamId].div;
+      if (!context.state.calendar || !context.state.cupState) {
+        initializeDefaultCareer();
+      } else {
+        context.viewedTeamId = context.state.userTeamId;
+        context.tableDiv = context.state.teams[context.state.userTeamId].div;
+      }
     } else {
       initializeDefaultCareer();
     }
