@@ -286,10 +286,16 @@ async function boot() {
     }
     renderLayout();
   } catch (err) {
+    console.error(err);
     document.getElementById('app-root').innerHTML = `
-      <div style="padding: 24px; color: var(--red);">Fatal Error: ${err.message}</div>
+      <div style="padding: 24px; color: var(--red); font-family: monospace;">
+        <strong>Fatal Error:</strong> ${err.message}
+        <pre style="margin-top: 12px; font-size: 11px; white-space: pre-wrap; color: #fff;">${err.stack}</pre>
+      </div>
     `;
   }
 }
+
+
 
 window.addEventListener('DOMContentLoaded', boot);
