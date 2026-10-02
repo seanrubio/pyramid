@@ -1,14 +1,7 @@
 import { FORMATIONS } from '../constants.js';
 import { sortTableEntries } from '../engine.js';
 
-export function renderMatchView(container, ctx) {
-  const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
-  const activeTeam = ctx.state.teams[activeTeamId];
-  const calendar = ctx.state.calendar || {};
-
-  if (!ctx.matchReportSide) ctx.matchReportSide = 'home';
-
-  // 1. Compile the complete, ordered chronological match ledger for this club
+function getClubChronologicalMatches(calendar, activeTeamId, activeTeamDiv) {
   const clubMatches = [];
   for (let w = 1; w <= 52; w++) {
     const weekSlots = calendar[w] || {};
@@ -22,13 +15,26 @@ export function renderMatchView(container, ctx) {
             week: w,
             moment: m,
             fixture: fix,
+            played: fix.played,
             comp: fix.comp || slot.comp,
-            compName: fix.cupName || slot.cupRoundName || `Division ${activeTeam.div}`
+            compName: fix.cupName || slot.cupRoundName || `Division ${activeTeamDiv}`
           });
         }
       }
     }
   }
+  return clubMatches;
+}
+
+export function renderMatchView(container, ctx) {
+  const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
+  const activeTeam = ctx.state.teams[activeTeamId];
+  const calendar = ctx.state.calendar || {};
+
+  if (!ctx.matchReportSide) ctx.matchReportSide = 'home';
+
+  // 1. Compile the complete, ordered chronological match ledger for this club
+  const clubMatches = getClubChronologicalMatches(calendar, activeTeamId, activeTeam.div);
 
   if (clubMatches.length === 0) {
     container.innerHTML = `
@@ -40,11 +46,11 @@ export function renderMatchView(container, ctx) {
   }
 
   // 2. Identify the active / upcoming match index
-  let defaultIdx = clubMatches.findIndex(item => !item.fixture.played);
+  let defaultIdx = clubMatches.findIndex(item => !item.played);
   if (defaultIdx === -1) defaultIdx = clubMatches.length - 1;
 
-  // If user navigated via openMatchReport(homeTeamId, week, moment)
-  if (ctx.viewedMatchRound !== null && ctx.viewedMatchNavIndex === undefined) {
+  // If navigated via openMatchReport(homeTeamId, week, moment)
+  if (ctx.viewedMatchRound !== null && (ctx.viewedMatchNavIndex === null || ctx.viewedMatchNavIndex === undefined)) {
     const foundIdx = clubMatches.findIndex(item => item.week === ctx.viewedMatchRound && (ctx.viewedMatchMoment === null || item.moment === ctx.viewedMatchMoment));
     if (foundIdx !== -1) ctx.viewedMatchNavIndex = foundIdx;
   }
@@ -216,7 +222,6 @@ export function renderMatchView(container, ctx) {
           </div>
         </div>
 
-        <!-- Box Score Column with Pill Switcher -->
         <div class="panel" style="overflow-x: auto; padding: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px;">
             <strong style="color: #fff; font-size: 12px; text-transform: uppercase;">PLAYER PERFORMANCE</strong>
@@ -371,20 +376,10 @@ export function setMatchReportSide(side, ctx, renderLayout) {
 
 export function changeMatchRound(delta, ctx, renderLayout) {
   const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
+  const activeTeam = ctx.state.teams[activeTeamId];
   const calendar = ctx.state.calendar || {};
 
-  const clubMatches = [];
-  for (let w = 1; w <= 52; w++) {
-    const weekSlots = calendar[w] || {};
-    for (let m = 1; m <= 4; m++) {
-      const slot = weekSlots[m];
-      if (slot && slot.type === 'match' && slot.matches) {
-        const fix = slot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
-        if (fix) clubMatches.push({ week: w, moment: m });
-      }
-    }
-  }
-
+  const clubMatches = getClubChronologicalMatches(calendar, activeTeamId, activeTeam.div);
   if (clubMatches.length === 0) return;
 
   let defaultIdx = clubMatches.findIndex(item => !item.played);
