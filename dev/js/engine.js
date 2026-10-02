@@ -1,37 +1,6 @@
 import { FORMATIONS, GK_ARCHETYPES, OUTFIELD_ARCHETYPES, BLUEPRINT_ARCHETYPE_MAP } from './constants.js';
 import { randomGaussian, sampleChoice, sigmoid } from './math.js';
 
-export const REGIONAL_CUP_DEFINITIONS = {
-  "Balkan Cup": ["club_belgrade", "club_ljubljana", "club_maribor", "club_rijeka", "club_sarajevo", "club_skopje", "club_sofia", "club_split", "club_tirana", "club_zadar", "club_zagreb"],
-  "Benelux Cup": ["club_amsterdam", "club_antwerp", "club_bruges", "club_brussels", "club_eindhoven", "club_groningen", "club_rotterdam"],
-  "Copa do Brasil": ["club_belo_horizonte", "club_curitiba", "club_porto_alegre", "club_rio_de_janeiro", "club_salvador", "club_santos", "club_sao_paulo"],
-  "British Isles Cup": ["club_aberdeen", "club_belfast", "club_cardiff", "club_dublin", "club_edinburgh", "club_glasgow", "club_swansea", "club_wrexham"],
-  "CAC Cup": ["club_cibao", "club_havana", "club_kingston", "club_montego_bay", "club_panama_city", "club_port_au_prince", "club_port_of_spain", "club_san_jose", "club_san_pedro_sula", "club_san_salvador", "club_willemstad"],
-  "Central Cup": ["club_basel", "club_bratislava", "club_budapest", "club_plzen", "club_prague", "club_tiraspol", "club_vaduz", "club_vienna", "club_zurich"],
-  "Crimea Cup": ["club_baku", "club_dnipro", "club_donetsk", "club_kazan", "club_kyiv", "club_tbilisi"],
-  "East Asian Cup": ["club_beijing", "club_jeonju", "club_osaka", "club_pohang", "club_pyongyang", "club_seoul", "club_shanghai", "club_tokyo", "club_yokohama", "club_bangkok"],
-  "Eastern Cup": ["club_bucharest", "club_minsk", "club_moscow", "club_st_petersburg", "club_warsaw", "club_yerevan", "club_astana"],
-  "English Cup": ["club_birmingham", "club_leeds", "club_liverpool", "club_london", "club_manchester", "club_nottingham", "club_woverhampton"],
-  "Coupe de France": ["club_bastia", "club_bordeaux", "club_lille", "club_lyon", "club_marseille", "club_monaco", "club_paris", "club_saint_etienne"],
-  "DFB-Pokal": ["club_berlin", "club_bremen", "club_dortmund", "club_frankfurt", "club_hamburg", "club_munich"],
-  "Copa del Iberica": ["club_barcelona", "club_bilbao", "club_braga", "club_funchal", "club_lisbon", "club_madrid", "club_porto", "club_san_sebastian", "club_seville", "club_valencia"],
-  "Coppa Italia": ["club_castel_di_sangro", "club_florence", "club_milan", "club_naples", "club_rome", "club_san_marino", "club_turin"],
-  "Middle East Cup": ["club_doha", "club_dubai", "club_jeddah", "club_riyadh", "club_tehran", "club_baghdad"],
-  "Nordic Cup": ["club_bodo", "club_copenhagen", "club_gothenburg", "club_helsinki", "club_klaksvik", "club_malmo", "club_oslo", "club_reykjavik", "club_stockholm", "club_tromso"],
-  "North Africa Cup": ["club_alexandria", "club_algiers", "club_cairo", "club_casablanca", "club_rabat", "club_tunis"],
-  "North American Cup": ["club_guadalajara", "club_los_angeles", "club_mexico_city", "club_miami", "club_monterrey", "club_montreal", "club_new_york", "club_pachuca", "club_toluca", "club_toronto", "club_vancouver", "club_oakland"],
-  "Copa Norte": ["club_barranquilla", "club_bogota", "club_cali", "club_caracas", "club_guayaquil", "club_maracaibo", "club_medellin", "club_quito", "club_praia", "club_freetown"],
-  "Pacific Cup": ["club_jakarta", "club_kuala_lumpur", "club_melbourne", "club_sydney", "club_tashkent", "club_wellington"],
-  "Copa Sud": ["club_asuncion", "club_avellaneda", "club_buenos_aires", "club_calama", "club_cordoba", "club_la_paz", "club_la_plata", "club_lima", "club_montevideo", "club_rosario"],
-  "Southeast African Cup": ["club_cape_town", "club_johannesburg", "club_kampala", "club_lubumbashi", "club_nairobi", "club_salto", "club_uganda_placeholder"],
-  "Southern Cup": ["club_ankara", "club_athens", "club_istanbul", "club_nicosia", "club_riga", "club_tallinn", "club_thessaloniki", "club_trabzon", "club_vilnius"],
-  "West African Cup": ["club_abidjan", "club_abuja", "club_accra", "club_bamako", "club_dakar", "club_kinshasa", "club_lagos", "club_luanda", "club_monrovia", "club_yaounde"]
-};
-
-if (REGIONAL_CUP_DEFINITIONS["Southeast African Cup"].includes("club_uganda_placeholder")) {
-  REGIONAL_CUP_DEFINITIONS["Southeast African Cup"] = ["club_cape_town", "club_johannesburg", "club_kampala", "club_lubumbashi", "club_nairobi", "club_salto", "club_vaduz_placeholder"].filter(x => x !== "club_vaduz_placeholder");
-}
-
 export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
@@ -331,6 +300,7 @@ export function generateUniversalCupR1(teams, prevSeasonByes = null) {
   if (prevSeasonByes && prevSeasonByes.length === 56) {
     byeIds = [...prevSeasonByes];
   } else {
+    // Season 1: All Div 1 (20), Div 2 (20), and 16 randomly chosen Div 3 clubs
     const div1 = allIds.filter(id => teams[id].div === 1);
     const div2 = allIds.filter(id => teams[id].div === 2);
     const div3 = allIds.filter(id => teams[id].div === 3);
@@ -382,11 +352,18 @@ export function generateMasterCalendar(teams, cupState = null) {
     }
   }
 
-  // WEEKS 5..16: Regional Tournament (24 matches max)
+  // WEEKS 5..16: Regional Tournament (derived dynamically from team.regionalCup)
+  const cupGroups = {};
+  Object.values(teams).forEach(t => {
+    if (t.regionalCup) {
+      if (!cupGroups[t.regionalCup]) cupGroups[t.regionalCup] = [];
+      cupGroups[t.regionalCup].push(t.id);
+    }
+  });
+
   const regionalSchedules = {};
-  for (const [cupName, teamList] of Object.entries(REGIONAL_CUP_DEFINITIONS)) {
-    const validTeams = teamList.filter(tid => teams[tid]);
-    const rr = buildRoundRobin(validTeams);
+  for (const [cupName, memberIds] of Object.entries(cupGroups)) {
+    const rr = buildRoundRobin(memberIds);
     rr.forEach(round => round.forEach(m => { m.comp = 'regional'; m.cupName = cupName; }));
     regionalSchedules[cupName] = rr;
   }
@@ -423,7 +400,6 @@ export function generateMasterCalendar(teams, cupState = null) {
     }
   }
 
-  // Moments 1 and 3 in weeks 5..16
   for (let w = 5; w <= 16; w++) {
     calendar[w][1] = { type: 'training', comp: 'regional', name: 'Tactical Preparation' };
     calendar[w][3] = { type: 'training', comp: 'regional', name: 'Tactical Preparation' };
@@ -861,7 +837,6 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   for (let i = hPhase1; i < hPossessions; i++) resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
   for (let i = aPhase1; i < aPossessions; i++) resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
 
-  // Clean sheets
   if (aGoals === 0) {
     (homeTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => {
       if (p.isGK || ['CB', 'LB', 'RB'].includes(p.slotRole)) getCompetitionPlayerStats(p, comp).cleanSheets++;
@@ -876,13 +851,11 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   applyMatchMinutes(homeTeam, matchSubsRecord.home, comp);
   applyMatchMinutes(awayTeam, matchSubsRecord.away, comp);
 
-  // Cup extra-time/penalties resolution if tied
   let winner = null;
   if (comp === 'cup') {
     if (hGoals > aGoals) winner = homeTeam.id;
     else if (aGoals > hGoals) winner = awayTeam.id;
     else {
-      // Tie-breaker penalty shootout simulation
       winner = Math.random() < 0.5 ? homeTeam.id : awayTeam.id;
       report.penaltyWinner = winner;
     }
@@ -965,13 +938,11 @@ export function advanceMomentSimulation(state) {
       }
     });
 
-    // Advance Universal Cup Knockout Tree if this was a cup round
     if (slot.comp === 'cup') {
       advanceUniversalCupNextRound(state, slot.cupRoundIndex);
     }
   }
 
-  // Tick the calendar forward
   if (state.moment < 4) {
     state.moment++;
   } else {
@@ -987,7 +958,6 @@ export function advanceUniversalCupNextRound(state, currentRndIdx) {
   const winners = currentMatches.map(m => m.winner).filter(Boolean);
 
   if (currentRndIdx === 0) {
-    // Round 1 -> Round 2: Add 56 byes
     const r2Teams = [...winners, ...(state.cupState.byes || [])].sort(() => Math.random() - 0.5);
     const r2Matches = [];
     for (let i = 0; i < r2Teams.length; i += 2) {
@@ -1059,7 +1029,6 @@ export function resetSeasonClean(state) {
     (relegations[d] || []).forEach(teamId => { state.teams[teamId].div = d + 1; });
   }
 
-  // League tables initialization
   state.tables = {};
   for (let d = 1; d <= 10; d++) {
     state.tables[d] = Object.values(state.teams)
@@ -1071,18 +1040,20 @@ export function resetSeasonClean(state) {
       }));
   }
 
-  // Regional tables initialization
+  // Dynamically initialize regional tables from team.regionalCup
   state.regionalTables = {};
-  for (const [cupName, teamList] of Object.entries(REGIONAL_CUP_DEFINITIONS)) {
-    const validTeams = teamList.filter(tid => state.teams[tid]);
-    state.regionalTables[cupName] = validTeams.map(tid => ({
-      teamId: tid, name: state.teams[tid].name,
-      p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0,
-      xg: 0.0, xga: 0.0, xgd: 0.0, form: []
-    }));
-  }
+  Object.values(state.teams).forEach(t => {
+    if (t.regionalCup) {
+      if (!state.regionalTables[t.regionalCup]) state.regionalTables[t.regionalCup] = [];
+      state.regionalTables[t.regionalCup].push({
+        teamId: t.id, name: t.name,
+        p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0,
+        xg: 0.0, xga: 0.0, xgd: 0.0, form: []
+      });
+    }
+  });
 
-  // Compute 56 byes for new season: all Div 1 (20), Div 2 (20), and 16 non-promoted Div 3 teams
+  // Calculate 56 byes: all Div 1 (20), Div 2 (20), and 16 non-promoted Div 3 teams
   const sortedDiv3 = sortTableEntries(state.tables[3]);
   const nonPromotedDiv3 = sortedDiv3.slice(4).map(r => r.teamId);
   const nextByes = [
@@ -1093,7 +1064,6 @@ export function resetSeasonClean(state) {
 
   state.cupState = generateUniversalCupR1(state.teams, nextByes);
 
-  // Clear player statistics
   Object.values(state.teams).forEach(t => {
     t.squad.forEach(p => {
       p.minutesPlayed = 0;
