@@ -26,10 +26,19 @@ export function renderLeagueView(container, ctx) {
     </div>
   `;
 
-  // 1. Universal Cup Knockout View
+  // 1. Universal Cup Knockout View (8 Rounds: R1 -> R128 -> R64 -> R32 -> R16 -> QF -> SF -> Final)
   if (ctx.activeCompetitionView === 'cup') {
     const rounds = ctx.state.cupState?.rounds || [];
-    const roundLabels = ['Round 1', 'Round 2', 'Round 3', 'Round 4', 'Quarterfinals', 'Semifinals', 'Final'];
+    const roundLabels = [
+      'Round 1',
+      'Round of 128',
+      'Round of 64',
+      'Round of 32',
+      'Round of 16',
+      'Quarterfinal',
+      'Semifinal',
+      'Final'
+    ];
     const activeCupTab = ctx.selectedCupRoundTab || 0;
 
     container.innerHTML = `
@@ -37,7 +46,7 @@ export function renderLeagueView(container, ctx) {
       <div style="display: flex; flex-direction: column; gap: 16px;">
         <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;">
           ${roundLabels.map((lbl, idx) => `
-            <button onclick="selectCupRoundTab(${idx})" style="padding: 3px 10px; font-size: 11px; ${activeCupTab === idx ? 'border-color: var(--accent); color: var(--accent); font-weight: 700;' : ''}">
+            <button onclick="selectCupRoundTab(${idx})" style="padding: 3px 10px; font-size: 11px; white-space: nowrap; ${activeCupTab === idx ? 'border-color: var(--accent); color: var(--accent); font-weight: 700;' : ''}">
               ${lbl.toUpperCase()}
             </button>
           `).join('')}
@@ -190,9 +199,17 @@ export function renderLeagueView(container, ctx) {
     `;
   }).join('') : `
     <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
-      No fixtures scheduled for Week ${viewedWeek}.
+      No fixtures scheduled for this matchweek.
     </div>
   `;
+
+  // Compute label for fixture browser header
+  let browserLabel = `MATCHWEEK ${viewedWeek}`;
+  if (viewedWeek <= 4) browserLabel = `WINDOW WEEK ${viewedWeek}`;
+  else if (viewedWeek <= 16) browserLabel = `REGIONAL MATCHWEEK ${viewedWeek - 4}`;
+  else if (viewedWeek <= 20) browserLabel = `WINDOW WEEK ${viewedWeek - 16}`;
+  else if (viewedWeek <= 51) browserLabel = `LEAGUE MATCHWEEK ${viewedWeek - 20}`;
+  else browserLabel = `UNIVERSAL CUP FINAL`;
 
   container.innerHTML = `
     ${compTabsHtml}
@@ -239,11 +256,11 @@ export function renderLeagueView(container, ctx) {
         ` : ''}
       </div>
 
-      <!-- Right Column: Week Fixtures Browser -->
+      <!-- Right Column: Matchweek Fixtures Browser -->
       <div class="panel" style="padding: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
-          <strong style="color: #fff; font-size: 12px;">WEEK ${viewedWeek} FIXTURES</strong>
-          <div style="display: gap: 4px;">
+          <strong style="color: #fff; font-size: 12px;">${browserLabel} FIXTURES</strong>
+          <div style="display: flex; gap: 4px;">
             <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${viewedWeek <= 1 ? 'disabled' : ''}>&lt;</button>
             <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${viewedWeek >= 52 ? 'disabled' : ''}>&gt;</button>
           </div>
