@@ -1,6 +1,17 @@
 import { FORMATIONS, GK_ARCHETYPES, OUTFIELD_ARCHETYPES, BLUEPRINT_ARCHETYPE_MAP } from './constants.js';
 import { randomGaussian, sampleChoice, sigmoid } from './math.js';
 
+export const CUP_ROUND_LABELS = [
+  'Round 1',
+  'Round of 128',
+  'Round of 64',
+  'Round of 32',
+  'Round of 16',
+  'Quarterfinal',
+  'Semifinal',
+  'Universal Cup Final'
+];
+
 export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
@@ -300,7 +311,7 @@ export function generateUniversalCupR1(teams, prevSeasonByes = null) {
   if (prevSeasonByes && prevSeasonByes.length === 56) {
     byeIds = [...prevSeasonByes];
   } else {
-    // Season 1: All Div 1 (20), Div 2 (20), and 16 randomly chosen Div 3 clubs
+    // Season 1: All Div 1 (20), Div 2 (20), and 16 randomly chosen Div 3 clubs = 56 byes
     const div1 = allIds.filter(id => teams[id].div === 1);
     const div2 = allIds.filter(id => teams[id].div === 2);
     const div3 = allIds.filter(id => teams[id].div === 3);
@@ -316,7 +327,7 @@ export function generateUniversalCupR1(teams, prevSeasonByes = null) {
     r1Matches.push({
       id: `cup_r1_m${i/2 + 1}`,
       roundIndex: 0,
-      roundName: 'Round 1',
+      roundName: CUP_ROUND_LABELS[0],
       home: r1Pool[i],
       away: r1Pool[i + 1],
       played: false,
@@ -352,7 +363,7 @@ export function generateMasterCalendar(teams, cupState = null) {
     }
   }
 
-  // WEEKS 5..16: Regional Tournament (derived dynamically from team.regionalCup)
+  // WEEKS 5..16: Regional Tournament
   const cupGroups = {};
   Object.values(teams).forEach(t => {
     if (t.regionalCup) {
@@ -443,11 +454,12 @@ export function generateMasterCalendar(teams, cupState = null) {
       calendar[w][2] = { type: 'match', comp: 'league', leagueRound: currentRnd + 1, matches };
     } else if (cupMidweekSet.has(w)) {
       const cupRndIdx = cupMidweeks.indexOf(w);
+      const roundLabel = CUP_ROUND_LABELS[cupRndIdx] || `Round ${cupRndIdx + 1}`;
       calendar[w][2] = {
         type: 'match',
         comp: 'cup',
         cupRoundIndex: cupRndIdx,
-        cupRoundName: `Round ${cupRndIdx + 1}`,
+        cupRoundName: roundLabel,
         matches: cupState?.rounds?.[cupRndIdx] || []
       };
     } else {
@@ -476,7 +488,7 @@ export function generateMasterCalendar(teams, cupState = null) {
     type: 'match',
     comp: 'cup',
     cupRoundIndex: 7,
-    cupRoundName: 'Universal Cup Final',
+    cupRoundName: CUP_ROUND_LABELS[7],
     matches: cupState?.rounds?.[7] || []
   };
 
@@ -489,11 +501,11 @@ export function getCurrentCalendarSlot(state) {
 
 export function getCalendarPhaseName(state) {
   const w = state.week;
-  if (w === 1) return 'Pre-season (Internal)';
-  if (w <= 4) return 'Pre-season (Market)';
-  if (w <= 16) return 'Regional Tournament';
-  if (w <= 20) return 'Secondary Window';
-  if (w <= 51) return 'League & Universal Cup';
+  if (w === 1) return 'Transfer Window';
+  if (w <= 4) return 'Transfer Window';
+  if (w <= 16) return 'Regional Cup';
+  if (w <= 20) return 'Transfer Window';
+  if (w <= 51) return 'Pyramid League & Universal Cup';
   return 'Universal Cup Final';
 }
 
@@ -964,7 +976,7 @@ export function advanceUniversalCupNextRound(state, currentRndIdx) {
       r2Matches.push({
         id: `cup_r2_m${i/2 + 1}`,
         roundIndex: 1,
-        roundName: 'Round 2',
+        roundName: CUP_ROUND_LABELS[1],
         home: r2Teams[i],
         away: r2Teams[i + 1],
         played: false,
@@ -983,7 +995,7 @@ export function advanceUniversalCupNextRound(state, currentRndIdx) {
       nextMatches.push({
         id: `cup_r${nextIdx + 1}_m${i/2 + 1}`,
         roundIndex: nextIdx,
-        roundName: nextIdx === 7 ? 'Universal Cup Final' : `Round ${nextIdx + 1}`,
+        roundName: CUP_ROUND_LABELS[nextIdx],
         home: nextTeams[i],
         away: nextTeams[i + 1],
         played: false,
@@ -1040,7 +1052,7 @@ export function resetSeasonClean(state) {
       }));
   }
 
-  // Dynamically initialize regional tables from team.regionalCup
+  // Initialize regional tables from team.regionalCup
   state.regionalTables = {};
   Object.values(state.teams).forEach(t => {
     if (t.regionalCup) {
@@ -1053,7 +1065,7 @@ export function resetSeasonClean(state) {
     }
   });
 
-  // Calculate 56 byes: all Div 1 (20), Div 2 (20), and 16 non-promoted Div 3 teams
+  // 56 byes: all Div 1 (20), Div 2 (20), and 16 non-promoted Div 3 teams
   const sortedDiv3 = sortTableEntries(state.tables[3]);
   const nonPromotedDiv3 = sortedDiv3.slice(4).map(r => r.teamId);
   const nextByes = [
