@@ -348,11 +348,11 @@ export function renderLayout() {
         <!-- Center: 4 Microcycle Ticks -->
         <div style="display: flex; align-items: center; gap: 6px; justify-content: center; background: rgba(0,0,0,0.3); padding: 3px 8px; border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;">
           ${strip.slots.map(s => {
-            let style = 'color: var(--text-muted); padding: 2px 6px; border-radius: 3px; font-size: 11px; font-family: monospace;';
+            let style = 'color: var(--text-muted); padding: 2px 6px; border-radius: 3px; font-size: 11px; font-family: monospace; border: 1px solid transparent;';
             if (s.isCurrent) {
-              style = 'background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: #fff; font-weight: 700; padding: 2px 8px; font-family: monospace;';
+              style = 'background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: #fff; font-weight: 700; padding: 2px 6px; font-size: 11px; font-family: monospace;';
             } else if (s.isPast) {
-              style = 'color: rgba(255, 255, 255, 0.3); text-decoration: line-through; padding: 2px 6px; font-family: monospace;';
+              style = 'color: rgba(255, 255, 255, 0.3); text-decoration: line-through; padding: 2px 6px; font-size: 11px; font-family: monospace; border: 1px solid transparent;';
             }
             return `<span style="${style}">${s.label}</span>`;
           }).join('<span style="color: var(--border); font-size: 10px;">|</span>')}
