@@ -6,8 +6,7 @@ import {
   generateUniversalCupR1, 
   advanceMomentSimulation, 
   resetSeasonClean, 
-  getCurrentCalendarSlot, 
-  getCalendarPhaseName 
+  getCurrentCalendarSlot 
 } from './engine.js';
 import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadViewMode } from './ui/squadView.js';
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
@@ -65,6 +64,99 @@ export function switchTab(tab) {
   renderLayout();
 }
 
+export function getScheduleStripModel(state) {
+  const userTeam = state.teams[state.userTeamId];
+  const w = state.week;
+  const m = state.moment;
+  const weekSlots = state.calendar?.[w] || {};
+
+  // 1. Gather all user matches scheduled this calendar week
+  const userMatches = [];
+  for (let slotMoment = 1; slotMoment <= 4; slotMoment++) {
+    const slot = weekSlots[slotMoment];
+    if (slot && slot.type === 'match' && slot.matches) {
+      const match = slot.matches.find(fx => fx.home === userTeam.id || fx.away === userTeam.id);
+      if (match) {
+        userMatches.push({ moment: slotMoment, match, slot });
+      }
+    }
+  }
+
+  // 2. Resolve Stage Title & Matchweek Label
+  let stageTitle = '';
+  let flag = '';
+
+  if (w <= 4) {
+    stageTitle = `Transfer Window • Week ${w}`;
+  } else if (w <= 16) {
+    const mwNum = w - 4;
+    const cupName = userTeam.regionalCup || 'Regional Cup';
+    stageTitle = `${cupName} • Matchweek ${mwNum}`;
+    if (userMatches.length >= 2) flag = ' [DGW]';
+    else if (userMatches.length === 0) flag = ' [BYE]';
+  } else if (w <= 20) {
+    stageTitle = `Transfer Window • Week ${w - 16}`;
+  } else if (w <= 51) {
+    const mwNum = w - 20;
+    const cupMatch = userMatches.find(item => item.match.comp === 'cup' || item.slot.comp === 'cup');
+    if (cupMatch) {
+      const cupRoundLabel = cupMatch.slot.cupRoundName || 'Cup Tie';
+      stageTitle = `Division ${userTeam.div} / ${cupRoundLabel} [DGW]`;
+    } else {
+      stageTitle = `Division ${userTeam.div} • Matchweek ${mwNum}`;
+      if (userMatches.length >= 2) flag = ' [DGW]';
+    }
+  } else {
+    stageTitle = 'Universal Cup Final';
+  }
+
+  // 3. Resolve the 4 Slot Labels
+  const slots = [1, 2, 3, 4].map(slotMoment => {
+    const isCurrent = (slotMoment === m);
+    const isPast = (slotMoment < m);
+    const slotData = weekSlots[slotMoment] || {};
+    let label = 'Training';
+
+    if (w === 52) {
+      const finalMatch = slotData.matches?.[0];
+      const isUserInFinal = finalMatch && (finalMatch.home === userTeam.id || finalMatch.away === userTeam.id);
+
+      if (isUserInFinal) {
+        if (slotMoment === 4) {
+          const isHome = finalMatch.home === userTeam.id;
+          const opp = state.teams[isHome ? finalMatch.away : finalMatch.home]?.name || 'TBD';
+          label = `UC Final: ${isHome ? 'vs' : '@'} ${opp}`;
+        }
+      } else {
+        if (slotMoment === 1) label = 'Exit Medicals';
+        else if (slotMoment === 2) label = 'Clean Out Lockers';
+        else if (slotMoment === 3) label = 'Say Goodbyes';
+        else if (slotMoment === 4) {
+          const hName = state.teams[finalMatch?.home]?.name || 'TBD';
+          const aName = state.teams[finalMatch?.away]?.name || 'TBD';
+          label = `UC Final: ${hName} vs ${aName}`;
+        }
+      }
+    } else if (w === 1) {
+      label = 'Re-sign Players';
+    } else if ((w >= 2 && w <= 4) || (w >= 17 && w <= 20)) {
+      label = 'Window Open';
+    } else {
+      const matchItem = userMatches.find(item => item.moment === slotMoment);
+      if (matchItem) {
+        const isHome = matchItem.match.home === userTeam.id;
+        const oppId = isHome ? matchItem.match.away : matchItem.match.home;
+        const oppName = state.teams[oppId]?.name || 'Opponent';
+        label = `${isHome ? 'vs' : '@'} ${oppName}`;
+      }
+    }
+
+    return { moment: slotMoment, label, isCurrent, isPast };
+  });
+
+  return { stageTitle: `S${state.season} • ${stageTitle}${flag}`, slots };
+}
+
 export function handleSimRound() {
   const currentSlot = getCurrentCalendarSlot(context.state);
   const userTeamId = context.state.userTeamId;
@@ -77,8 +169,18 @@ export function handleSimRound() {
   const prevW = context.state.week;
   const prevM = context.state.moment;
 
+  // Advancing past "Say Goodbyes" in Week 52 routes non-finalist to the bracket
+  if (prevW === 52 && prevM === 3) {
+    const finalMatch = context.state.calendar[52]?.[4]?.matches?.[0];
+    const isUserInFinal = finalMatch && (finalMatch.home === userTeamId || finalMatch.away === userTeamId);
+    if (!isUserInFinal) {
+      context.activeTab = 'league';
+      context.activeCompetitionView = 'cup';
+      context.selectedCupRoundTab = 7; // Universal Cup Final tab index
+    }
+  }
+
   if (advanceMomentSimulation(context.state)) {
-    // If user's club played, lock onto this finished fixture so post-match report is displayed
     if (userFixture && userFixture.played) {
       context.viewedMatchRound = prevW;
       context.viewedMatchMoment = prevM;
@@ -210,10 +312,19 @@ export function renderLayout() {
   const hasUserMatch = currentSlot && currentSlot.type === 'match' && currentSlot.matches &&
     currentSlot.matches.some(m => m.home === context.state.userTeamId || m.away === context.state.userTeamId);
 
-  const buttonText = isSeasonOver ? 'START NEW SEASON' : (hasUserMatch ? 'PLAY MATCH' : 'ADVANCE');
-  
-  const MOMENT_NAMES = { 1: 'Early', 2: 'Mid', 3: 'Late', 4: 'End' };
-  const tickName = MOMENT_NAMES[context.state.moment] || 'Early';
+  const weekSlots = context.state.calendar?.[context.state.week] || {};
+  const nextMoment = context.state.moment + 1;
+  const nextSlot = weekSlots[nextMoment];
+  const hasMatchNext = nextSlot && nextSlot.type === 'match' && nextSlot.matches &&
+    nextSlot.matches.some(m => m.home === context.state.userTeamId || m.away === context.state.userTeamId);
+
+  let buttonText = 'ADVANCE';
+  if (isSeasonOver) buttonText = 'START NEW SEASON';
+  else if (hasUserMatch) buttonText = 'PLAY MATCH';
+  else if (hasMatchNext) buttonText = 'ADVANCE TO MATCHDAY';
+  else if (context.state.week === 52 && context.state.moment === 3) buttonText = 'ADVANCE TO UC FINAL';
+
+  const strip = getScheduleStripModel(context.state);
 
   document.getElementById('app-root').innerHTML = `
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
@@ -227,9 +338,6 @@ export function renderLayout() {
           ` : ''}
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="color: var(--text-muted); font-size: 12px;">
-            ${isSeasonOver ? '<strong style="color: var(--accent);">SEASON COMPLETE</strong>' : `S${context.state.season} • Week ${context.state.week} (${tickName})`}
-          </span>
           ${isSeasonOver ? `
             <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
           ` : `
@@ -238,10 +346,30 @@ export function renderLayout() {
           <button onclick="resetGameDatabase()" class="danger" title="Clear Save">RESET</button>
         </div>
       </div>
+      
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 6px;">
         ${['squad', 'tactics', 'match', 'fixtures', 'league', 'stats'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${context.activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
+      </div>
+
+      <!-- Schedule Horizon Strip: Left-aligned Stage Label, Centered 4 Ticks -->
+      <div style="max-width: 1200px; margin: 8px auto 0; padding: 6px 12px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; font-size: 11px; gap: 8px;">
+        <div style="font-weight: 700; color: #fff; letter-spacing: 0.3px; white-space: nowrap;">
+          ${strip.stageTitle}
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; justify-content: center;">
+          ${strip.slots.map(s => {
+            let style = 'color: var(--text-muted); padding: 2px 6px; border-radius: 3px; font-size: 11px;';
+            if (s.isCurrent) {
+              style = 'background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: #fff; font-weight: 700; padding: 2px 8px;';
+            } else if (s.isPast) {
+              style = 'color: rgba(255, 255, 255, 0.3); text-decoration: line-through; padding: 2px 6px;';
+            }
+            return `<span style="${style}">${s.label}</span>`;
+          }).join('<span style="color: var(--border);">|</span>')}
+        </div>
+        <div></div>
       </div>
     </header>
 
