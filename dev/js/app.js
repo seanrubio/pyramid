@@ -328,16 +328,38 @@ export function renderLayout() {
 
   document.getElementById('app-root').innerHTML = `
     <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
-      <div style="max-width: 1200px; margin: auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <strong style="color: #fff; font-size: 14px;">${activeTeam.name}</strong>
+      <!-- Single Unified Top Bar: Left (Club & Stage) | Center (4 Ticks) | Right (Action & Reset) -->
+      <div style="max-width: 1200px; margin: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;">
+        
+        <!-- Left: Club Identifier & Stage Title -->
+        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; white-space: nowrap;">
+          <strong style="color: #fff; font-size: 14px; letter-spacing: 0.5px;">${activeTeam.name}</strong>
           ${isViewingOtherClub ? `
-            <button onclick="inspectTeam('${context.state.userTeamId}')" style="background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: var(--accent); padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700; cursor: pointer;">
+            <button onclick="inspectTeam('${context.state.userTeamId}')" style="background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: var(--accent); padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 700; cursor: pointer;">
               RETURN TO ${userTeam.name.toUpperCase()}
             </button>
           ` : ''}
+          <span style="color: var(--border);">|</span>
+          <span style="color: var(--text-muted); font-size: 11px; font-weight: 600; text-overflow: ellipsis; overflow: hidden;">
+            ${strip.stageTitle}
+          </span>
         </div>
-        <div style="display: flex; align-items: center; gap: 12px;">
+
+        <!-- Center: 4 Microcycle Ticks -->
+        <div style="display: flex; align-items: center; gap: 6px; justify-content: center; background: rgba(0,0,0,0.3); padding: 3px 8px; border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;">
+          ${strip.slots.map(s => {
+            let style = 'color: var(--text-muted); padding: 2px 6px; border-radius: 3px; font-size: 11px; font-family: monospace;';
+            if (s.isCurrent) {
+              style = 'background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: #fff; font-weight: 700; padding: 2px 8px; font-family: monospace;';
+            } else if (s.isPast) {
+              style = 'color: rgba(255, 255, 255, 0.3); text-decoration: line-through; padding: 2px 6px; font-family: monospace;';
+            }
+            return `<span style="${style}">${s.label}</span>`;
+          }).join('<span style="color: var(--border); font-size: 10px;">|</span>')}
+        </div>
+
+        <!-- Right: Primary Sim Button & Reset -->
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
           ${isSeasonOver ? `
             <button onclick="handleStartNewSeason()" class="primary" style="background: var(--accent); color: #000; font-weight: 700;">START NEW SEASON</button>
           ` : `
@@ -347,29 +369,11 @@ export function renderLayout() {
         </div>
       </div>
       
-      <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 6px;">
+      <!-- Nav Tabs Bar -->
+      <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 8px;">
         ${['squad', 'tactics', 'match', 'fixtures', 'league', 'stats'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${context.activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
-      </div>
-
-      <!-- Schedule Horizon Strip: Left-aligned Stage Label, Centered 4 Ticks -->
-      <div style="max-width: 1200px; margin: 8px auto 0; padding: 6px 12px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; font-size: 11px; gap: 8px;">
-        <div style="font-weight: 700; color: #fff; letter-spacing: 0.3px; white-space: nowrap;">
-          ${strip.stageTitle}
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; justify-content: center;">
-          ${strip.slots.map(s => {
-            let style = 'color: var(--text-muted); padding: 2px 6px; border-radius: 3px; font-size: 11px;';
-            if (s.isCurrent) {
-              style = 'background: rgba(88, 166, 255, 0.15); border: 1px solid var(--accent); color: #fff; font-weight: 700; padding: 2px 8px;';
-            } else if (s.isPast) {
-              style = 'color: rgba(255, 255, 255, 0.3); text-decoration: line-through; padding: 2px 6px;';
-            }
-            return `<span style="${style}">${s.label}</span>`;
-          }).join('<span style="color: var(--border);">|</span>')}
-        </div>
-        <div></div>
       </div>
     </header>
 
