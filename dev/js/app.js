@@ -87,7 +87,7 @@ export function getScheduleStripModel(state) {
   let flag = '';
 
   if (w <= 4) {
-    stageTitle = `Transfer Window • Week ${w}`;
+    stageTitle = `Transfer Window • Week ${w}/4`;
   } else if (w <= 16) {
     const mwNum = w - 4;
     const cupName = userTeam.regionalCup || 'Regional Cup';
@@ -95,7 +95,7 @@ export function getScheduleStripModel(state) {
     if (userMatches.length >= 2) flag = ' [DGW]';
     else if (userMatches.length === 0) flag = ' [BYE]';
   } else if (w <= 20) {
-    stageTitle = `Transfer Window • Week ${w - 16}`;
+    stageTitle = `Transfer Window • Week ${w - 16}/4`;
   } else if (w <= 51) {
     const mwNum = w - 20;
     const cupMatch = userMatches.find(item => item.match.comp === 'cup' || item.slot.comp === 'cup');
