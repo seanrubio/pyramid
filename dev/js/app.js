@@ -86,14 +86,17 @@ export function getScheduleStripModel(state) {
   let stageTitle = '';
   let flag = '';
 
+  const dgwBadge = ' <span style="color: var(--red, #f85149); font-weight: 700;">[DGW]</span>';
+  const byeBadge = ' <span style="color: var(--amber, #e3b341); font-weight: 700;">[BYE]</span>';
+
   if (w <= 4) {
     stageTitle = `Transfer Window • Week ${w}/4`;
   } else if (w <= 16) {
     const mwNum = w - 4;
     const cupName = userTeam.regionalCup || 'Regional Cup';
     stageTitle = `${cupName} • Matchweek ${mwNum}`;
-    if (userMatches.length >= 2) flag = ' [DGW]';
-    else if (userMatches.length === 0) flag = ' [BYE]';
+    if (userMatches.length >= 2) flag = dgwBadge;
+    else if (userMatches.length === 0) flag = byeBadge;
   } else if (w <= 20) {
     stageTitle = `Transfer Window • Week ${w - 16}/4`;
   } else if (w <= 51) {
@@ -101,10 +104,11 @@ export function getScheduleStripModel(state) {
     const cupMatch = userMatches.find(item => item.match.comp === 'cup' || item.slot.comp === 'cup');
     if (cupMatch) {
       const cupRoundLabel = cupMatch.slot.cupRoundName || 'Cup Tie';
-      stageTitle = `Division ${userTeam.div} / ${cupRoundLabel} [DGW]`;
+      stageTitle = `Division ${userTeam.div} / ${cupRoundLabel}`;
+      flag = dgwBadge;
     } else {
       stageTitle = `Division ${userTeam.div} • Matchweek ${mwNum}`;
-      if (userMatches.length >= 2) flag = ' [DGW]';
+      if (userMatches.length >= 2) flag = dgwBadge;
     }
   } else {
     stageTitle = 'Universal Cup Final';
