@@ -35,7 +35,6 @@ export function renderFixturesView(container, ctx) {
           if (comp === 'cup') {
             roundLabel = slot.cupRoundName || match.roundName || 'Cup Tie';
           } else if (comp === 'regional') {
-            // Calendar weeks 5..16 correspond directly to Regional Matchweeks 1..12
             roundLabel = `MW ${w - 4}`;
           } else if (comp === 'league') {
             const mwNum = match.leagueRound || (w - 20);
@@ -57,6 +56,10 @@ export function renderFixturesView(container, ctx) {
       }
     }
   }
+
+  // Identify the target row: first unplayed match (or current match)
+  const targetFixture = entries.find(e => e.isCurrent) || entries.find(e => !e.match.played);
+  const targetKey = targetFixture ? `${targetFixture.week}_${targetFixture.moment}` : null;
 
   container.innerHTML = `
     <div style="max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px;">
@@ -86,6 +89,7 @@ export function renderFixturesView(container, ctx) {
               <tr><td colspan="7" style="text-align: center; padding: 24px; color: var(--text-muted);">No scheduled fixtures found for this club.</td></tr>
             ` : entries.map(item => {
               const { week, moment, isCurrent, compName, roundLabel, isHome, oppName, match } = item;
+              const isTargetRow = targetKey === `${week}_${moment}`;
 
               let scoreDisplay = '<span style="color: var(--text-muted);">—</span>';
               let xgDisplay = '<span style="color: var(--text-muted);">—</span>';
@@ -111,8 +115,9 @@ export function renderFixturesView(container, ctx) {
               }
 
               return `
-                <tr style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08); font-weight: 600;' : ''}">
-                  <td style="text-align: left; padding-left: 8px; color: var(--text-muted); font-family: monospace; font-size: 11px; white-space: nowrap;">${roundLabel}</td>                  <td style="color: var(--accent); font-size: 11px;">${compName}</td>
+                <tr ${isTargetRow ? 'id="upcoming-fixture-row"' : ''} style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08); font-weight: 600;' : ''}">
+                  <td style="text-align: left; padding-left: 8px; color: var(--text-muted); font-family: monospace; font-size: 11px; white-space: nowrap;">${roundLabel}</td>
+                  <td style="color: var(--accent); font-size: 11px;">${compName}</td>
                   <td style="text-align: center;">${isHome ? '<strong style="color: var(--accent);">H</strong>' : 'A'}</td>
                   <td><span style="color: #fff;">${oppName}</span></td>
                   <td style="text-align: center;">${scoreDisplay}</td>
@@ -126,4 +131,12 @@ export function renderFixturesView(container, ctx) {
       </div>
     </div>
   `;
+
+  // Auto-scroll the upcoming match to the bottom of the visible panel
+  requestAnimationFrame(() => {
+    const el = document.getElementById('upcoming-fixture-row');
+    if (el) {
+      el.scrollIntoView({ block: 'end' });
+    }
+  });
 }
