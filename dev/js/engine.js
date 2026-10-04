@@ -1027,20 +1027,30 @@ export function resetSeasonClean(state) {
   const promotions = {};
   const relegations = {};
 
-  // 4 Up / 4 Down between divisions
+  // 1. Calculate promotions & relegations from completed tables
   for (let d = 1; d <= 10; d++) {
-    const sorted = sortTableEntries(state.tables[d]);
+    const sorted = sortTableEntries(state.tables[d] || []);
     if (d > 1) promotions[d] = sorted.slice(0, 4).map(e => e.teamId);
     if (d < 10) relegations[d] = sorted.slice(-4).map(e => e.teamId);
   }
 
+  // 2. Calculate Div 3 Byes BEFORE resetting tables (Positions 5-20)
+  const prevSortedDiv3 = sortTableEntries(state.tables[3] || []);
+  const nonPromotedDiv3 = prevSortedDiv3.slice(4).map(r => r.teamId);
+
+  // 3. Apply promotion and relegation to team objects
   for (let d = 2; d <= 10; d++) {
-    (promotions[d] || []).forEach(teamId => { state.teams[teamId].div = d - 1; });
+    (promotions[d] || []).forEach(teamId => { 
+      if (state.teams[teamId]) state.teams[teamId].div = d - 1; 
+    });
   }
   for (let d = 1; d <= 9; d++) {
-    (relegations[d] || []).forEach(teamId => { state.teams[teamId].div = d + 1; });
+    (relegations[d] || []).forEach(teamId => { 
+      if (state.teams[teamId]) state.teams[teamId].div = d + 1; 
+    });
   }
 
+  // 4. Initialize fresh league tables
   state.tables = {};
   for (let d = 1; d <= 10; d++) {
     state.tables[d] = Object.values(state.teams)
@@ -1052,7 +1062,7 @@ export function resetSeasonClean(state) {
       }));
   }
 
-  // Initialize regional tables from team.regionalCup
+  // 5. Initialize regional tables
   state.regionalTables = {};
   Object.values(state.teams).forEach(t => {
     if (t.regionalCup) {
@@ -1065,9 +1075,7 @@ export function resetSeasonClean(state) {
     }
   });
 
-  // 56 byes: all Div 1 (20), Div 2 (20), and 16 non-promoted Div 3 teams
-  const sortedDiv3 = sortTableEntries(state.tables[3]);
-  const nonPromotedDiv3 = sortedDiv3.slice(4).map(r => r.teamId);
+  // 6. Setup 56 Cup Byes: All new Div 1 (20), new Div 2 (20), and 16 non-promoted Div 3
   const nextByes = [
     ...Object.values(state.teams).filter(t => t.div === 1).map(t => t.id),
     ...Object.values(state.teams).filter(t => t.div === 2).map(t => t.id),
@@ -1076,8 +1084,9 @@ export function resetSeasonClean(state) {
 
   state.cupState = generateUniversalCupR1(state.teams, nextByes);
 
+  // 7. Reset individual player in-season tallies
   Object.values(state.teams).forEach(t => {
-    t.squad.forEach(p => {
+    (t.squad || []).forEach(p => {
       p.minutesPlayed = 0;
       p.stats = {
         league: createDefaultPlayerStats(),
@@ -1087,10 +1096,12 @@ export function resetSeasonClean(state) {
     });
   });
 
+  // 8. Generate calendar & advance season pointer
   state.calendar = generateMasterCalendar(state.teams, state.cupState);
   state.season++;
   state.week = 1;
   state.moment = 1;
+} // <-- Correctly closed here
 
 export function adaptLineupToFormation(DB, team, newFormation) {
   team.formation = newFormation;
@@ -1100,7 +1111,6 @@ export function adaptLineupToFormation(DB, team, newFormation) {
   // 1. Separate current starters and bench players
   const currentStarters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
   
-  // Fall back to complete squad auto-assignment only if 11 starters are not set
   if (currentStarters.length !== 11) {
     autoAssignLineup(DB, team);
     return;
@@ -1129,5 +1139,4 @@ export function adaptLineupToFormation(DB, team, newFormation) {
     const chosen = availableOutfield.shift();
     chosen.slot = slot.slotCode;
   }
-}
 }
