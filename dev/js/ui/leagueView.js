@@ -4,29 +4,28 @@ export function renderLeagueView(container, ctx) {
   if (!ctx.activeCompetitionView) ctx.activeCompetitionView = 'league';
   if (!ctx.leagueLeaderTab) ctx.leagueLeaderTab = 'boot';
 
+  const isRegional = (ctx.activeCompetitionView === 'regional');
   const availableCups = Object.keys(ctx.state.regionalTables || {}).sort();
   if (!ctx.selectedRegionalCup || !ctx.state.regionalTables?.[ctx.selectedRegionalCup]) {
     ctx.selectedRegionalCup = availableCups[0] || 'North American Cup';
   }
 
-  const currentWeek = ctx.state.week || 1;
-  const viewedWeek = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentWeek;
-
+  // 1. Header Navigation Pills
   const compTabsHtml = `
     <div style="display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
       <button onclick="setCompetitionView('league')" style="font-weight: 700; ${ctx.activeCompetitionView === 'league' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
-        LEAGUE DIVISIONS (1–10)
+        Pyramid League
       </button>
       <button onclick="setCompetitionView('regional')" style="font-weight: 700; ${ctx.activeCompetitionView === 'regional' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
-        REGIONAL CUPS (${availableCups.length})
+        Regional Cups
       </button>
       <button onclick="setCompetitionView('cup')" style="font-weight: 700; ${ctx.activeCompetitionView === 'cup' ? 'border-color: var(--accent); color: var(--accent);' : 'color: var(--text-muted);'}">
-        UNIVERSAL CUP BRACKET
+        Universal Cup
       </button>
     </div>
   `;
 
-  // 1. Universal Cup Knockout View (8 Rounds: R1 -> R128 -> R64 -> R32 -> R16 -> QF -> SF -> Final)
+  // 2. Universal Cup View
   if (ctx.activeCompetitionView === 'cup') {
     const rounds = ctx.state.cupState?.rounds || [];
     const roundLabels = [
@@ -84,8 +83,22 @@ export function renderLeagueView(container, ctx) {
     return;
   }
 
-  // 2. Standings Tables (League or Regional)
-  const isRegional = (ctx.activeCompetitionView === 'regional');
+  // 3. Resolve Scoped Matchweek Bounds
+  // Regional: MW 1..12 (Calendar Weeks 5..16)
+  // League: MW 1..38 (Calendar Weeks 21..51)
+  const currentWeek = ctx.state.week || 1;
+  const maxRounds = isRegional ? 12 : 38;
+
+  let currentCompRound = 1;
+  if (isRegional) {
+    currentCompRound = Math.max(1, Math.min(12, currentWeek - 4));
+  } else {
+    currentCompRound = Math.max(1, Math.min(38, currentWeek - 20));
+  }
+
+  const viewedRound = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentCompRound;
+
+  // 4. Standings Tables
   let tableKey = isRegional ? ctx.selectedRegionalCup : ctx.tableDiv;
   let rawTable = isRegional ? (ctx.state.regionalTables?.[tableKey] || []) : (ctx.state.tables?.[tableKey] || []);
   let sortedRows = sortTableEntries(rawTable);
@@ -156,60 +169,73 @@ export function renderLeagueView(container, ctx) {
     `;
   }).join('');
 
-  // Collect fixtures for the selected week across this division / cup
-  const weekSlots = ctx.state.calendar?.[viewedWeek] || {};
-  const weekMatches = [];
-  [1, 2, 3, 4].forEach(m => {
-    const slot = weekSlots[m];
-    if (slot && slot.type === 'match' && slot.matches) {
-      slot.matches.forEach(fix => {
-        if (!isRegional && (fix.div === ctx.tableDiv || (!fix.div && ctx.state.teams[fix.home]?.div === ctx.tableDiv))) {
-          weekMatches.push(fix);
-        } else if (isRegional && fix.cupName === ctx.selectedRegionalCup) {
-          weekMatches.push(fix);
+  // 5. Gather Fixtures for the active scoped Matchweek
+  const roundMatches = [];
+  const calendar = ctx.state.calendar || {};
+
+  if (isRegional) {
+    // Regional matchweek N corresponds directly to Calendar week (N + 4)
+    const calWeek = viewedRound + 4;
+    const weekSlots = calendar[calWeek] || {};
+    [1, 2, 3, 4].forEach(m => {
+      const slot = weekSlots[m];
+      if (slot && slot.type === 'match' && slot.matches) {
+        slot.matches.forEach(fix => {
+          if (fix.cupName === ctx.selectedRegionalCup) {
+            roundMatches.push({ fix, week: calWeek, moment: m });
+          }
+        });
+      }
+    });
+  } else {
+    // Scan league fixtures matching this division and leagueRound
+    for (let w = 21; w <= 51; w++) {
+      const weekSlots = calendar[w] || {};
+      [2, 4].forEach(m => {
+        const slot = weekSlots[m];
+        if (slot && slot.type === 'match' && slot.matches) {
+          slot.matches.forEach(fix => {
+            const matchDiv = fix.div || ctx.state.teams[fix.home]?.div;
+            if (matchDiv === ctx.tableDiv && fix.leagueRound === viewedRound) {
+              roundMatches.push({ fix, week: w, moment: m });
+            }
+          });
         }
       });
+      if (roundMatches.length > 0) break; // Found the week containing this league round
     }
-  });
+  }
 
-  const fixturesHtml = weekMatches.length > 0 ? weekMatches.map(m => {
-    const isUserMatch = (m.home === ctx.state.userTeamId || m.away === ctx.state.userTeamId);
-    const homeName = ctx.state.teams[m.home]?.name || 'Unknown';
-    const awayName = ctx.state.teams[m.away]?.name || 'Unknown';
+  const fixturesHtml = roundMatches.length > 0 ? roundMatches.map(({ fix, week, moment }) => {
+    const isUserMatch = (fix.home === ctx.state.userTeamId || fix.away === ctx.state.userTeamId);
+    const homeName = ctx.state.teams[fix.home]?.name || 'Unknown';
+    const awayName = ctx.state.teams[fix.away]?.name || 'Unknown';
 
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 3px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid var(--border);">
         <div style="flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px;">
-          <span onclick="inspectTeam('${m.home}', 'squad')" style="cursor: pointer; font-size: 11px;">${homeName}</span>
+          <span onclick="inspectTeam('${fix.home}', 'squad')" style="cursor: pointer; font-size: 11px;">${homeName}</span>
         </div>
         <div style="min-width: 68px; text-align: center; display: flex; flex-direction: column; align-items: center;">
-          ${m.played ? `
-            <button onclick="openMatchReport('${m.home}',${viewedWeek})" 
+          ${fix.played ? `
+            <button onclick="openMatchReport('${fix.home}', ${week},${moment})" 
                     title="View Match Report"
                     style="padding: 1px 6px; font-family: monospace; font-size: 11px; font-weight: 700; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: #fff; cursor: pointer; border-radius: 3px;">
-              ${m.hg}–${m.ag}
+              ${fix.hg}–${fix.ag}
             </button>
-            <span style="font-family: monospace; font-size: 9px; color: var(--text-muted); margin-top: 2px;">${m.hxg.toFixed(1)}–${m.axg.toFixed(1)}</span>
+            <span style="font-family: monospace; font-size: 9px; color: var(--text-muted); margin-top: 2px;">${fix.hxg.toFixed(1)}–${fix.axg.toFixed(1)}</span>
           ` : `<span style="font-family: monospace; font-size: 10px; color: var(--text-muted);">vs</span>`}
         </div>
         <div style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 6px;">
-          <span onclick="inspectTeam('${m.away}', 'squad')" style="cursor: pointer; font-size: 11px;">${awayName}</span>
+          <span onclick="inspectTeam('${fix.away}', 'squad')" style="cursor: pointer; font-size: 11px;">${awayName}</span>
         </div>
       </div>
     `;
   }).join('') : `
     <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
-      No fixtures scheduled for this matchweek.
+      No fixtures scheduled for Matchweek ${viewedRound}.
     </div>
   `;
-
-  // Compute label for fixture browser header
-  let browserLabel = `MATCHWEEK ${viewedWeek}`;
-  if (viewedWeek <= 4) browserLabel = `WINDOW WEEK ${viewedWeek}`;
-  else if (viewedWeek <= 16) browserLabel = `REGIONAL MATCHWEEK ${viewedWeek - 4}`;
-  else if (viewedWeek <= 20) browserLabel = `WINDOW WEEK ${viewedWeek - 16}`;
-  else if (viewedWeek <= 51) browserLabel = `LEAGUE MATCHWEEK ${viewedWeek - 20}`;
-  else browserLabel = `UNIVERSAL CUP FINAL`;
 
   container.innerHTML = `
     ${compTabsHtml}
@@ -256,13 +282,13 @@ export function renderLeagueView(container, ctx) {
         ` : ''}
       </div>
 
-      <!-- Right Column: Matchweek Fixtures Browser -->
+      <!-- Right Column: Scoped Matchweek Browser -->
       <div class="panel" style="padding: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
-          <strong style="color: #fff; font-size: 12px;">${browserLabel} FIXTURES</strong>
+          <strong style="color: #fff; font-size: 12px;">MATCHWEEK ${viewedRound} OF ${maxRounds}</strong>
           <div style="display: flex; gap: 4px;">
-            <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${viewedWeek <= 1 ? 'disabled' : ''}>&lt;</button>
-            <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${viewedWeek >= 52 ? 'disabled' : ''}>&gt;</button>
+            <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${viewedRound <= 1 ? 'disabled' : ''}>&lt;</button>
+            <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${viewedRound >= maxRounds ? 'disabled' : ''}>&gt;</button>
           </div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 3px;">
@@ -279,9 +305,19 @@ export function setLeagueDiv(d, ctx, renderLayout) {
 }
 
 export function changeLeagueRound(delta, ctx, renderLayout) {
+  const isRegional = (ctx.activeCompetitionView === 'regional');
+  const maxRounds = isRegional ? 12 : 38;
   const currentWeek = ctx.state.week || 1;
-  const curr = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentWeek;
-  ctx.viewedFixtureRound = Math.max(1, Math.min(52, curr + delta));
+
+  let currentCompRound = 1;
+  if (isRegional) {
+    currentCompRound = Math.max(1, Math.min(12, currentWeek - 4));
+  } else {
+    currentCompRound = Math.max(1, Math.min(38, currentWeek - 20));
+  }
+
+  const curr = ctx.viewedFixtureRound !== null ? ctx.viewedFixtureRound : currentCompRound;
+  ctx.viewedFixtureRound = Math.max(1, Math.min(maxRounds, curr + delta));
   renderLayout();
 }
 
@@ -292,6 +328,7 @@ export function setLeagueLeaderTab(cat, ctx, renderLayout) {
 
 export function setCompetitionView(mode, ctx, renderLayout) {
   ctx.activeCompetitionView = mode;
+  ctx.viewedFixtureRound = null; // Reset navigation round when switching between league/regional/cup
   renderLayout();
 }
 
