@@ -5,7 +5,6 @@ export function renderFixturesView(container, ctx) {
   const currentMoment = ctx.state.moment;
 
   const entries = [];
-  let regionalMatchCounter = 0;
 
   for (let w = 1; w <= 52; w++) {
     const weekData = calendar[w];
@@ -23,7 +22,7 @@ export function renderFixturesView(container, ctx) {
           const oppTeam = ctx.state.teams[oppId];
           const comp = match.comp || slot.comp;
 
-          // 1. Resolve Display Competition Name
+          // 1. Resolve Competition Name
           let compName = `Division ${team.div}`;
           if (comp === 'cup') {
             compName = 'Universal Cup';
@@ -31,20 +30,13 @@ export function renderFixturesView(container, ctx) {
             compName = team.regionalCup || match.cupName || 'Regional Cup';
           }
 
-          // 2. Resolve Round / Matchweek Tag
+          // 2. Resolve Round / Matchweek Label
           let roundLabel = `W${w}.M${m}`;
           if (comp === 'cup') {
-            // E.g., "Round 1" -> "R1", "Round of 64" -> "R64", "Quarterfinal" -> "QF"
-            const rawRound = slot.cupRoundName || match.roundName || 'Cup Tie';
-            roundLabel = rawRound
-              .replace('Round of ', 'R')
-              .replace('Round ', 'R')
-              .replace('Quarterfinal', 'QF')
-              .replace('Semifinal', 'SF')
-              .replace('Universal Cup Final', 'Final');
+            roundLabel = slot.cupRoundName || match.roundName || 'Cup Tie';
           } else if (comp === 'regional') {
-            regionalMatchCounter++;
-            roundLabel = `MW ${regionalMatchCounter}`;
+            // Calendar weeks 5..16 correspond directly to Regional Matchweeks 1..12
+            roundLabel = `MW ${w - 4}`;
           } else if (comp === 'league') {
             const mwNum = match.leagueRound || (w - 20);
             roundLabel = `MW ${mwNum}`;
@@ -80,7 +72,7 @@ export function renderFixturesView(container, ctx) {
         <table style="border-collapse: collapse; width: 100%;">
           <thead>
             <tr style="position: sticky; top: 0; background: #161b22; z-index: 2; box-shadow: 0 1px 0 var(--border);">
-              <th style="width: 70px; text-align: center;">Round</th>
+              <th style="width: 115px; text-align: left; padding-left: 8px;">Round</th>
               <th style="width: 150px;">Competition</th>
               <th style="width: 45px; text-align: center;">H/A</th>
               <th>Opponent</th>
@@ -120,7 +112,7 @@ export function renderFixturesView(container, ctx) {
 
               return `
                 <tr style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08); font-weight: 600;' : ''}">
-                  <td style="text-align: center; color: var(--text-muted); font-family: monospace; font-size: 11px;">${roundLabel}</td>
+                  <td style="text-align: left; padding-left: 8px; color: var(--text-muted); font-family: monospace; font-size: 11px;">${roundLabel}</td>
                   <td style="color: var(--accent); font-size: 11px;">${compName}</td>
                   <td style="text-align: center;">${isHome ? '<strong style="color: var(--accent);">H</strong>' : 'A'}</td>
                   <td><span style="color: #fff;">${oppName}</span></td>
