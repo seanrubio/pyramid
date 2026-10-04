@@ -114,14 +114,22 @@ export function createFullSquad(DB, team) {
   const style = team.tactics ? (team.tactics.chanceCreation || team.tactics.buildMid) : 'mixed';
   const press = team.tactics ? team.tactics.press : 'mid block';
 
+  // 1. Resolve host country (checks team property first, then DB.cities by id or name)
+  const city = DB.cities?.find(c => c.id === team.id || c.name === team.name);
+  const domesticNat = team.country || city?.country || 'US';
+
   let favoredPool = BLUEPRINT_ARCHETYPE_MAP[style];
   if (!favoredPool && press === 'gegenpress') favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
 
-  for (let i = 0; i < 2; i++) squad.push(generatePlayer(DB, true, div));
+  // 2. Generate 2 GKs (100% domestic)
+  for (let i = 0; i < 2; i++) {
+    squad.push(generatePlayer(DB, true, div, domesticNat));
+  }
 
+  // 3. Generate 21 Outfield Players (100% domestic)
   for (let i = 0; i < 21; i++) {
     const archetypeKey = (favoredPool && Math.random() < 0.65) ? sampleChoice(favoredPool) : sampleChoice(OUTFIELD_ARCHETYPES);
-    const player = generatePlayer(DB, false, div);
+    const player = generatePlayer(DB, false, div, domesticNat);
     player.archetypeKey = archetypeKey;
     const arch = DB.archetypes[archetypeKey];
     player.archetypeName = arch.name;
