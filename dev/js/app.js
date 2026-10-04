@@ -13,7 +13,6 @@ import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView
 import { renderMatchView, changeMatchRound, resetToCurrentMatchRound, setMatchReportSide } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
 import { renderLeagueView, setLeagueDiv, changeLeagueRound, setLeagueLeaderTab, setCompetitionView, setSelectedRegionalCup, selectCupRoundTab } from './ui/leagueView.js';
-import { renderStatsView, setStatsViewMode, sortStatsView, setStatsPage, toggleStatsDropdown, toggleStatsMetric, resetStatsMetrics, toggleStatsDiv, setAllStatsDivs, toggleStatsTrait, setStatsTraitMode, clearStatsTraits, toggleStatsPhase, toggleStatsArchetype, clearStatsArchetypes, setStatsMinMinutes, setStatsAgeRange, resetAllStatsFilters } from './ui/statsView.js';
 
 export const context = {
   DB: null,
@@ -375,7 +374,7 @@ export function renderLayout() {
       
       <!-- Nav Tabs Bar -->
       <div style="max-width: 1200px; margin: auto; display: flex; gap: 4px; margin-top: 8px;">
-        ${['squad', 'tactics', 'match', 'fixtures', 'league', 'stats'].map(tab => `
+        ${['squad', 'tactics', 'match', 'fixtures', 'league'].map(tab => `
           <button onclick="switchTab('${tab}')" class="nav-btn ${context.activeTab === tab ? 'active' : ''}">${tab.toUpperCase()}</button>
         `).join('')}
       </div>
@@ -390,7 +389,6 @@ export function renderLayout() {
   else if (context.activeTab === 'match') renderMatchView(ws, context);
   else if (context.activeTab === 'fixtures') renderFixturesView(ws, context);
   else if (context.activeTab === 'league') renderLeagueView(ws, context);
-  else if (context.activeTab === 'stats') renderStatsView(ws, context);
 }
 
 Object.assign(window, {
@@ -417,23 +415,6 @@ Object.assign(window, {
   setCompetitionView: (mode) => setCompetitionView(mode, context, renderLayout),
   setSelectedRegionalCup: (cup) => setSelectedRegionalCup(cup, context, renderLayout),
   selectCupRoundTab: (idx) => selectCupRoundTab(idx, context, renderLayout),
-  setStatsViewMode: (mode) => setStatsViewMode(mode, context, renderLayout),
-  sortStatsView: (key) => sortStatsView(key, context, renderLayout),
-  setStatsPage: (p) => setStatsPage(p, context, renderLayout),
-  toggleStatsDropdown: (name) => toggleStatsDropdown(name, context, renderLayout),
-  toggleStatsMetric: (mId) => toggleStatsMetric(mId, context, renderLayout),
-  resetStatsMetrics: () => resetStatsMetrics(context, renderLayout),
-  toggleStatsDiv: (d) => toggleStatsDiv(d, context, renderLayout),
-  setAllStatsDivs: (all) => setAllStatsDivs(all, context, renderLayout),
-  toggleStatsTrait: (t) => toggleStatsTrait(t, context, renderLayout),
-  setStatsTraitMode: (m) => setStatsTraitMode(m, context, renderLayout),
-  clearStatsTraits: () => clearStatsTraits(context, renderLayout),
-  toggleStatsPhase: (ph, q) => toggleStatsPhase(ph, q, context, renderLayout),
-  toggleStatsArchetype: (arc) => toggleStatsArchetype(arc, context, renderLayout),
-  clearStatsArchetypes: () => clearStatsArchetypes(context, renderLayout),
-  setStatsMinMinutes: (val) => setStatsMinMinutes(val, context, renderLayout),
-  setStatsAgeRange: (min, max) => setStatsAgeRange(min, max, context, renderLayout),
-  resetAllStatsFilters: () => resetAllStatsFilters(context, renderLayout)
 });
 
 async function boot() {
