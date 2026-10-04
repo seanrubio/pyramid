@@ -72,10 +72,10 @@ export function renderFixturesView(container, ctx) {
         <table style="border-collapse: collapse; width: 100%;">
           <thead>
             <tr style="position: sticky; top: 0; background: #161b22; z-index: 2; box-shadow: 0 1px 0 var(--border);">
-              <th style="width: 115px; text-align: left; padding-left: 8px;">Round</th>
-              <th style="width: 150px;">Competition</th>
+              <th style="width: 85px; text-align: left; padding-left: 8px; white-space: nowrap;">Round</th>
+              <th style="width: 140px; white-space: nowrap;">Competition</th>
               <th style="width: 45px; text-align: center;">H/A</th>
-              <th>Opponent</th>
+              <th style="text-align: left;">Opponent</th>
               <th style="width: 95px; text-align: center;">Result</th>
               <th style="width: 110px; text-align: center;">xG</th>
               <th style="width: 60px; text-align: center;">Outcome</th>
@@ -112,8 +112,7 @@ export function renderFixturesView(container, ctx) {
 
               return `
                 <tr style="${isCurrent ? 'background: rgba(88, 166, 255, 0.08); font-weight: 600;' : ''}">
-                  <td style="text-align: left; padding-left: 8px; color: var(--text-muted); font-family: monospace; font-size: 11px;">${roundLabel}</td>
-                  <td style="color: var(--accent); font-size: 11px;">${compName}</td>
+                  <td style="text-align: left; padding-left: 8px; color: var(--text-muted); font-family: monospace; font-size: 11px; white-space: nowrap;">${roundLabel}</td>                  <td style="color: var(--accent); font-size: 11px;">${compName}</td>
                   <td style="text-align: center;">${isHome ? '<strong style="color: var(--accent);">H</strong>' : 'A'}</td>
                   <td><span style="color: #fff;">${oppName}</span></td>
                   <td style="text-align: center;">${scoreDisplay}</td>
