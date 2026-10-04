@@ -53,7 +53,6 @@ export function openMatchReport(homeTeamId, week, moment = null) {
   context.viewedMatchRound = week;
   context.viewedMatchMoment = moment;
   context.viewedMatchNavIndex = null;
-  context.activeTab = 'match';
   renderLayout();
 }
 
