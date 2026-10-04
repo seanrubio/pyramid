@@ -186,8 +186,7 @@ export function handleSimRound() {
     if (userFixture && userFixture.played) {
       context.viewedMatchRound = prevW;
       context.viewedMatchMoment = prevM;
-      context.viewedMatchNavIndex = null;
-      context.activeTab = 'match';
+      context.viewedMatchNavIndex = null;;
     }
 
     saveGameState();
