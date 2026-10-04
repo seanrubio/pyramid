@@ -1052,45 +1052,6 @@ export function resetSeasonClean(state) {
       }));
   }
 
-  export function adaptLineupToFormation(DB, team, newFormation) {
-  team.formation = newFormation;
-  const formRoles = FORMATIONS[newFormation] || FORMATIONS['4-4-2 Flat'];
-  const bpKey = team.tactics ? team.tactics.blueprint : null;
-
-  // 1. Separate current starters and bench players
-  const currentStarters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
-  
-  // Fall back to complete squad auto-assignment only if 11 starters are not set
-  if (currentStarters.length !== 11) {
-    autoAssignLineup(DB, team);
-    return;
-  }
-
-  // Clear starter slots only (B1–B9 remain unchanged)
-  currentStarters.forEach(p => { p.slot = null; });
-
-  // 2. Assign Goalkeeper to S1
-  const gk = currentStarters.find(p => p.isGK) || currentStarters[0];
-  gk.slot = 'S1';
-
-  // 3. Slot the remaining 10 outfield starters into S2..S11 based on best fit
-  const availableOutfield = currentStarters.filter(p => p.id !== gk.id);
-  const outfieldSlots = formRoles.slice(1).map((role, idx) => ({
-    role,
-    slotCode: `S${idx + 2}`
-  }));
-
-  const getRolePriority = (role) => (role === 'CB' ? 1 : role === 'ST' ? 2 : ['DM', 'CM', 'AM'].includes(role) ? 3 : 4);
-  outfieldSlots.sort((a, b) => getRolePriority(a.role) - getRolePriority(b.role));
-
-  for (const slot of outfieldSlots) {
-    if (availableOutfield.length === 0) break;
-    availableOutfield.sort((a, b) => evaluateSlotFit(DB, b, slot.role, bpKey) - evaluateSlotFit(DB, a, slot.role, bpKey));
-    const chosen = availableOutfield.shift();
-    chosen.slot = slot.slotCode;
-  }
-}
-
   // Initialize regional tables from team.regionalCup
   state.regionalTables = {};
   Object.values(state.teams).forEach(t => {
@@ -1130,4 +1091,43 @@ export function resetSeasonClean(state) {
   state.season++;
   state.week = 1;
   state.moment = 1;
+
+export function adaptLineupToFormation(DB, team, newFormation) {
+  team.formation = newFormation;
+  const formRoles = FORMATIONS[newFormation] || FORMATIONS['4-4-2 Flat'];
+  const bpKey = team.tactics ? team.tactics.blueprint : null;
+
+  // 1. Separate current starters and bench players
+  const currentStarters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
+  
+  // Fall back to complete squad auto-assignment only if 11 starters are not set
+  if (currentStarters.length !== 11) {
+    autoAssignLineup(DB, team);
+    return;
+  }
+
+  // Clear starter slots only (B1–B9 remain unchanged)
+  currentStarters.forEach(p => { p.slot = null; });
+
+  // 2. Assign Goalkeeper to S1
+  const gk = currentStarters.find(p => p.isGK) || currentStarters[0];
+  gk.slot = 'S1';
+
+  // 3. Slot the remaining 10 outfield starters into S2..S11 based on best fit
+  const availableOutfield = currentStarters.filter(p => p.id !== gk.id);
+  const outfieldSlots = formRoles.slice(1).map((role, idx) => ({
+    role,
+    slotCode: `S${idx + 2}`
+  }));
+
+  const getRolePriority = (role) => (role === 'CB' ? 1 : role === 'ST' ? 2 : ['DM', 'CM', 'AM'].includes(role) ? 3 : 4);
+  outfieldSlots.sort((a, b) => getRolePriority(a.role) - getRolePriority(b.role));
+
+  for (const slot of outfieldSlots) {
+    if (availableOutfield.length === 0) break;
+    availableOutfield.sort((a, b) => evaluateSlotFit(DB, b, slot.role, bpKey) - evaluateSlotFit(DB, a, slot.role, bpKey));
+    const chosen = availableOutfield.shift();
+    chosen.slot = slot.slotCode;
+  }
+}
 }
