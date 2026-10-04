@@ -83,16 +83,34 @@ export function renderLeagueView(container, ctx) {
     return;
   }
 
-  // 3. Resolve Scoped Matchweek Bounds
-  // Regional: MW 1..12 (Calendar Weeks 5..16)
-  // League: MW 1..38 (Calendar Weeks 21..51)
+  // 3. Resolve Fixture Slates & Max Bounds for the active competition
+  const calendar = ctx.state.calendar || {};
   const currentWeek = ctx.state.week || 1;
-  const maxRounds = isRegional ? 12 : 38;
+  const currentMoment = ctx.state.moment || 1;
 
+  let regionalSlates = [];
+  let maxRounds = 38;
   let currentCompRound = 1;
+
   if (isRegional) {
-    currentCompRound = Math.max(1, Math.min(12, currentWeek - 4));
+    for (let w = 5; w <= 16; w++) {
+      [2, 4].forEach(m => {
+        const slot = calendar[w]?.[m];
+        if (slot?.type === 'match' && slot.matches?.some(f => f.cupName === ctx.selectedRegionalCup)) {
+          regionalSlates.push({ week: w, moment: m });
+        }
+      });
+    }
+    maxRounds = Math.max(1, regionalSlates.length);
+
+    // Default to the current match slate or the closest upcoming/last played slate
+    let activeIdx = regionalSlates.findIndex(s => s.week === currentWeek && s.moment === currentMoment);
+    if (activeIdx === -1) {
+      activeIdx = regionalSlates.findIndex(s => s.week > currentWeek || (s.week === currentWeek && s.moment > currentMoment));
+    }
+    currentCompRound = activeIdx !== -1 ? (activeIdx + 1) : (currentWeek > 16 ? maxRounds : 1);
   } else {
+    maxRounds = 38;
     currentCompRound = Math.max(1, Math.min(38, currentWeek - 20));
   }
 
@@ -169,26 +187,20 @@ export function renderLeagueView(container, ctx) {
     `;
   }).join('');
 
-  // 5. Gather Fixtures for the active scoped Matchweek
+  // 5. Gather Fixtures for the active single slate
   const roundMatches = [];
-  const calendar = ctx.state.calendar || {};
 
   if (isRegional) {
-    // Regional matchweek N corresponds directly to Calendar week (N + 4)
-    const calWeek = viewedRound + 4;
-    const weekSlots = calendar[calWeek] || {};
-    [1, 2, 3, 4].forEach(m => {
-      const slot = weekSlots[m];
-      if (slot && slot.type === 'match' && slot.matches) {
-        slot.matches.forEach(fix => {
-          if (fix.cupName === ctx.selectedRegionalCup) {
-            roundMatches.push({ fix, week: calWeek, moment: m });
-          }
-        });
-      }
-    });
+    const targetSlot = regionalSlates[viewedRound - 1] || regionalSlates[0];
+    if (targetSlot) {
+      const slot = calendar[targetSlot.week]?.[targetSlot.moment];
+      (slot?.matches || []).forEach(fix => {
+        if (fix.cupName === ctx.selectedRegionalCup) {
+          roundMatches.push({ fix, week: targetSlot.week, moment: targetSlot.moment });
+        }
+      });
+    }
   } else {
-    // Scan league fixtures matching this division and leagueRound
     for (let w = 21; w <= 51; w++) {
       const weekSlots = calendar[w] || {};
       [2, 4].forEach(m => {
@@ -202,7 +214,7 @@ export function renderLeagueView(container, ctx) {
           });
         }
       });
-      if (roundMatches.length > 0) break; // Found the week containing this league round
+      if (roundMatches.length > 0) break;
     }
   }
 
@@ -233,7 +245,7 @@ export function renderLeagueView(container, ctx) {
     `;
   }).join('') : `
     <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
-      No fixtures scheduled for Matchweek ${viewedRound}.
+      No fixtures scheduled for this round.
     </div>
   `;
 
@@ -282,10 +294,10 @@ export function renderLeagueView(container, ctx) {
         ` : ''}
       </div>
 
-      <!-- Right Column: Scoped Matchweek Browser -->
+      <!-- Right Column: Clean Fixtures Browser -->
       <div class="panel" style="padding: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px;">
-          <strong style="color: #fff; font-size: 12px;">MATCHWEEK ${viewedRound} OF ${maxRounds}</strong>
+          <strong style="color: #fff; font-size: 12px; letter-spacing: 0.5px;">FIXTURES</strong>
           <div style="display: flex; gap: 4px;">
             <button onclick="changeLeagueRound(-1)" style="padding: 1px 6px;" ${viewedRound <= 1 ? 'disabled' : ''}>&lt;</button>
             <button onclick="changeLeagueRound(1)" style="padding: 1px 6px;" ${viewedRound >= maxRounds ? 'disabled' : ''}>&gt;</button>
@@ -301,18 +313,38 @@ export function renderLeagueView(container, ctx) {
 
 export function setLeagueDiv(d, ctx, renderLayout) {
   ctx.tableDiv = d;
+  ctx.viewedFixtureRound = null;
   renderLayout();
 }
 
 export function changeLeagueRound(delta, ctx, renderLayout) {
   const isRegional = (ctx.activeCompetitionView === 'regional');
-  const maxRounds = isRegional ? 12 : 38;
+  const calendar = ctx.state.calendar || {};
   const currentWeek = ctx.state.week || 1;
+  const currentMoment = ctx.state.moment || 1;
 
+  let maxRounds = 38;
   let currentCompRound = 1;
+
   if (isRegional) {
-    currentCompRound = Math.max(1, Math.min(12, currentWeek - 4));
+    let regionalSlates = [];
+    for (let w = 5; w <= 16; w++) {
+      [2, 4].forEach(m => {
+        const slot = calendar[w]?.[m];
+        if (slot?.type === 'match' && slot.matches?.some(f => f.cupName === ctx.selectedRegionalCup)) {
+          regionalSlates.push({ week: w, moment: m });
+        }
+      });
+    }
+    maxRounds = Math.max(1, regionalSlates.length);
+
+    let activeIdx = regionalSlates.findIndex(s => s.week === currentWeek && s.moment === currentMoment);
+    if (activeIdx === -1) {
+      activeIdx = regionalSlates.findIndex(s => s.week > currentWeek || (s.week === currentWeek && s.moment > currentMoment));
+    }
+    currentCompRound = activeIdx !== -1 ? (activeIdx + 1) : (currentWeek > 16 ? maxRounds : 1);
   } else {
+    maxRounds = 38;
     currentCompRound = Math.max(1, Math.min(38, currentWeek - 20));
   }
 
@@ -328,12 +360,13 @@ export function setLeagueLeaderTab(cat, ctx, renderLayout) {
 
 export function setCompetitionView(mode, ctx, renderLayout) {
   ctx.activeCompetitionView = mode;
-  ctx.viewedFixtureRound = null; // Reset navigation round when switching between league/regional/cup
+  ctx.viewedFixtureRound = null;
   renderLayout();
 }
 
 export function setSelectedRegionalCup(cupName, ctx, renderLayout) {
   ctx.selectedRegionalCup = cupName;
+  ctx.viewedFixtureRound = null;
   renderLayout();
 }
 
