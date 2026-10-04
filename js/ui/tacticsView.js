@@ -1,5 +1,5 @@
 import { FORMATIONS } from '../constants.js';
-import { autoAssignLineup } from '../engine.js';
+import { adaptLineupToFormation } from '../engine.js';
 
 export function renderTacticsView(container, ctx) {
   const team = ctx.state.teams[ctx.viewedTeamId] || ctx.state.teams[ctx.state.userTeamId];
@@ -39,8 +39,7 @@ export function renderTacticsView(container, ctx) {
 
 export function updateFormation(form, ctx, renderLayout, saveGameState) {
   const team = ctx.state.teams[ctx.state.userTeamId];
-  team.formation = form;
-  autoAssignLineup(ctx.DB, team);
+  adaptLineupToFormation(ctx.DB, team, form);
   saveGameState();
   renderLayout();
 }

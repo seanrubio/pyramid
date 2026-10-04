@@ -1,33 +1,77 @@
 import { FORMATIONS } from '../constants.js';
 import { sortTableEntries } from '../engine.js';
 
+function getClubChronologicalMatches(calendar, activeTeamId, activeTeamDiv) {
+  const clubMatches = [];
+  for (let w = 1; w <= 52; w++) {
+    const weekSlots = calendar[w] || {};
+    for (let m = 1; m <= 4; m++) {
+      const slot = weekSlots[m];
+      if (slot && slot.type === 'match' && slot.matches) {
+        const fix = slot.matches.find(f => f.home === activeTeamId || f.away === activeTeamId);
+        if (fix) {
+          clubMatches.push({
+            idx: clubMatches.length,
+            week: w,
+            moment: m,
+            fixture: fix,
+            played: fix.played,
+            comp: fix.comp || slot.comp,
+            compName: fix.cupName || slot.cupRoundName || `Division ${activeTeamDiv}`
+          });
+        }
+      }
+    }
+  }
+  return clubMatches;
+}
+
 export function renderMatchView(container, ctx) {
   const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
   const activeTeam = ctx.state.teams[activeTeamId];
-  const activeDiv = activeTeam.div;
-  const maxR = ctx.state.maxRounds || 38;
-  const currentRound = Math.max(1, Math.min(ctx.state.round, maxR));
-  const activeRound = ctx.viewedMatchRound !== null ? ctx.viewedMatchRound : currentRound;
+  const calendar = ctx.state.calendar || {};
 
   if (!ctx.matchReportSide) ctx.matchReportSide = 'home';
 
-  // Find fixture for active club
-  const roundFixtures = ctx.state.fixtures[activeDiv]?.[activeRound - 1] || [];
-  const matchFixture = roundFixtures.find(m => m.home === activeTeamId || m.away === activeTeamId);
+  // 1. Compile the complete, ordered chronological match ledger for this club
+  const clubMatches = getClubChronologicalMatches(calendar, activeTeamId, activeTeam.div);
 
-  if (!matchFixture) {
-    container.innerHTML = `<div class="panel" style="padding: 20px; text-align: center; color: var(--text-muted);">No fixture found for Round ${activeRound}.</div>`;
+  if (clubMatches.length === 0) {
+    container.innerHTML = `
+      <div class="panel" style="padding: 32px; text-align: center; color: var(--text-muted);">
+        No scheduled matches found across the calendar for ${activeTeam.name}.
+      </div>
+    `;
     return;
   }
 
-  const isHome = matchFixture.home === activeTeamId;
-  const homeTeam = ctx.state.teams[matchFixture.home] || { name: 'Home Club' };
-  const awayTeam = ctx.state.teams[matchFixture.away] || { name: 'Away Club' };
-  const oppId = isHome ? matchFixture.away : matchFixture.home;
+  // 2. Identify the active / upcoming match index
+  let defaultIdx = clubMatches.findIndex(item => !item.played);
+  if (defaultIdx === -1) defaultIdx = clubMatches.length - 1;
+
+  // If navigated via openMatchReport(homeTeamId, week, moment)
+  if (ctx.viewedMatchRound !== null && (ctx.viewedMatchNavIndex === null || ctx.viewedMatchNavIndex === undefined)) {
+    const foundIdx = clubMatches.findIndex(item => item.week === ctx.viewedMatchRound && (ctx.viewedMatchMoment === null || item.moment === ctx.viewedMatchMoment));
+    if (foundIdx !== -1) ctx.viewedMatchNavIndex = foundIdx;
+  }
+
+  const currentNavIdx = (ctx.viewedMatchNavIndex !== null && ctx.viewedMatchNavIndex !== undefined)
+    ? Math.max(0, Math.min(clubMatches.length - 1, ctx.viewedMatchNavIndex))
+    : defaultIdx;
+
+  const currentItem = clubMatches[currentNavIdx];
+  const targetFixture = currentItem.fixture;
+  const isHome = (targetFixture.home === activeTeamId);
+  const homeTeam = ctx.state.teams[targetFixture.home] || { name: 'Home Club' };
+  const awayTeam = ctx.state.teams[targetFixture.away] || { name: 'Away Club' };
+  const oppId = isHome ? targetFixture.away : targetFixture.home;
   const oppTeam = isHome ? awayTeam : homeTeam;
 
-  // Standings data
-  const rawTable = ctx.state.tables[activeDiv] || [];
+  // Opposition profile and standings for scouting
+  const isRegional = (currentItem.comp === 'regional' && currentItem.fixture.cupName);
+  const rawTable = isRegional
+    ? (ctx.state.regionalTables?.[currentItem.fixture.cupName] || [])
+    : (ctx.state.tables?.[oppTeam.div] || []);
   const sortedTable = sortTableEntries(rawTable);
   const oppRank = sortedTable.findIndex(r => r.teamId === oppId) + 1;
   const oppRow = sortedTable.find(r => r.teamId === oppId) || { p: 0, w: 0, d: 0, l: 0, pts: 0, xg: 0, xga: 0, form: [] };
@@ -41,6 +85,16 @@ export function renderMatchView(container, ctx) {
 
   const xgaSorted = [...rawTable].sort((a, b) => (a.p > 0 ? a.xga / a.p : 999) - (b.p > 0 ? b.xga / b.p : 999));
   const xgaRank = xgaSorted.findIndex(r => r.teamId === oppId) + 1;
+
+  const formList = oppRow.form && oppRow.form.length > 0 ? oppRow.form : ['-'];
+  const formBadges = formList.map(res => {
+    let color = 'var(--text-muted)';
+    let bg = 'rgba(255, 255, 255, 0.05)';
+    if (res === 'W') { color = 'var(--green, #3fb950)'; bg = 'rgba(63, 185, 80, 0.15)'; }
+    else if (res === 'D') { color = '#e3b341'; bg = 'rgba(227, 179, 65, 0.15)'; }
+    else if (res === 'L') { color = 'var(--red, #f85149)'; bg = 'rgba(248, 81, 73, 0.15)'; }
+    return `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; font-size: 11px; font-weight: 700; color: ${color}; background: ${bg};">${res}</span>`;
+  }).join(' ');
 
   const tactics = oppTeam.tactics || {};
   const formation = oppTeam.formation || '4-4-2 Flat';
@@ -65,28 +119,18 @@ export function renderMatchView(container, ctx) {
     .sort((a, b) => calculatePillarAvg(b) - calculatePillarAvg(a))
     .slice(0, 3);
 
-  const formList = oppRow.form && oppRow.form.length > 0 ? oppRow.form : ['-'];
-  const formBadges = formList.map(res => {
-    let color = 'var(--text-muted)';
-    let bg = 'rgba(255, 255, 255, 0.05)';
-    if (res === 'W') { color = 'var(--green, #3fb950)'; bg = 'rgba(63, 185, 80, 0.15)'; }
-    else if (res === 'D') { color = '#e3b341'; bg = 'rgba(227, 179, 65, 0.15)'; }
-    else if (res === 'L') { color = 'var(--red, #f85149)'; bg = 'rgba(248, 81, 73, 0.15)'; }
-    return `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; font-size: 11px; font-weight: 700; color: ${color}; background: ${bg};">${res}</span>`;
-  }).join(' ');
-
-  // Render Concluded Match Report
+  // Full Post-Match Report Renderer
   const renderPostMatchSection = () => {
-    const rep = matchFixture.report;
+    const rep = targetFixture.report;
     if (!rep) {
       return `
         <div class="panel" style="padding: 24px; text-align: center; margin-bottom: 16px;">
-          <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">FINAL RESULT</div>
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">FINAL RESULT</div>
           <div style="font-size: 32px; font-weight: 800; font-family: monospace; color: #fff; margin-bottom: 4px;">
-            ${matchFixture.hg} – ${matchFixture.ag}
+            ${targetFixture.hg} – ${targetFixture.ag}
           </div>
           <div style="font-size: 12px; color: var(--text-muted); font-family: monospace;">
-            xG: ${matchFixture.hxg.toFixed(1)} – ${matchFixture.axg.toFixed(1)}
+            xG: ${targetFixture.hxg.toFixed(1)} – ${targetFixture.axg.toFixed(1)}
           </div>
         </div>
       `;
@@ -108,7 +152,6 @@ export function renderMatchView(container, ctx) {
       </div>
     `;
 
-    // Positional rank sorting
     const getPosOrder = (p) => {
       if (p.slot && p.slot.startsWith('S')) return parseInt(p.slot.slice(1), 10);
       if (p.slot && p.slot.startsWith('B')) return 100 + parseInt(p.slot.slice(1), 10);
@@ -142,7 +185,7 @@ export function renderMatchView(container, ctx) {
       <!-- Result Banner -->
       <div class="panel" style="padding: 16px; margin-bottom: 16px; text-align: center; background: rgba(0,0,0,0.25);">
         <div style="font-size: 10px; color: var(--text-muted); font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">
-          ROUND ${activeRound} FINAL
+          FINAL RESULT
         </div>
         <div style="display: flex; justify-content: center; align-items: center; gap: 24px; margin-bottom: 6px;">
           <div style="flex: 1; text-align: right;">
@@ -150,7 +193,7 @@ export function renderMatchView(container, ctx) {
           </div>
           <div style="min-width: 90px; text-align: center;">
             <span style="font-family: monospace; font-size: 26px; font-weight: 800; color: #fff; letter-spacing: 2px;">
-              ${matchFixture.hg} – ${matchFixture.ag}
+              ${targetFixture.hg} – ${targetFixture.ag}
             </span>
           </div>
           <div style="flex: 1; text-align: left;">
@@ -158,7 +201,7 @@ export function renderMatchView(container, ctx) {
           </div>
         </div>
         <div style="font-family: monospace; font-size: 11px; color: var(--text-muted);">
-          ${matchFixture.hxg.toFixed(1)} xG &nbsp;—&nbsp; ${matchFixture.axg.toFixed(1)} xG
+          ${targetFixture.hxg.toFixed(1)} xG &nbsp;—&nbsp; ${targetFixture.axg.toFixed(1)} xG
         </div>
       </div>
 
@@ -172,14 +215,13 @@ export function renderMatchView(container, ctx) {
             ${renderStatLine('Possession', `${hPoss}%`, `${aPoss}%`)}
             ${renderStatLine('Total Shots', hStats.shots, aStats.shots)}
             ${renderStatLine('Shots on Target', hStats.sot, aStats.sot)}
-            ${renderStatLine('Expected Goals (xG)', matchFixture.hxg.toFixed(1), matchFixture.axg.toFixed(1))}
+            ${renderStatLine('Expected Goals (xG)', targetFixture.hxg.toFixed(1), targetFixture.axg.toFixed(1))}
             ${renderStatLine('Passing Accuracy', `${hCmp}%`, `${aCmp}%`)}
             ${renderStatLine('Tackles Won', hStats.tacklesWon, aStats.tacklesWon)}
             ${renderStatLine('GK Saves', hStats.saves, aStats.saves)}
           </div>
         </div>
 
-        <!-- Box Score Column with Pill Switcher -->
         <div class="panel" style="overflow-x: auto; padding: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px;">
             <strong style="color: #fff; font-size: 12px; text-transform: uppercase;">PLAYER PERFORMANCE</strong>
@@ -218,21 +260,22 @@ export function renderMatchView(container, ctx) {
   };
 
   container.innerHTML = `
-    <!-- Round Navigation Bar -->
+    <!-- Top Interactive Fixture Navigation Bar -->
     <div class="panel" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; margin-bottom: 16px;">
       <div style="display: flex; align-items: center; gap: 8px;">
-        <button onclick="changeMatchRound(-1)" style="padding: 2px 10px;" ${activeRound <= 1 ? 'disabled' : ''}>&lt;</button>
-        <strong style="color: #fff; font-size: 13px;">ROUND ${activeRound} OF ${maxR}</strong>
-        <button onclick="changeMatchRound(1)" style="padding: 2px 10px;" ${activeRound >= maxR ? 'disabled' : ''}>&gt;</button>
+        <button onclick="changeMatchRound(-1)" style="padding: 2px 10px;" ${currentNavIdx <= 0 ? 'disabled' : ''}>&lt;</button>
+        <strong style="color: #fff; font-size: 13px;">MATCH ${currentNavIdx + 1} OF ${clubMatches.length} <span style="color: var(--text-muted); font-size: 11px; margin-left: 4px;">(W${currentItem.week}.M${currentItem.moment})</span></strong>
+        <button onclick="changeMatchRound(1)" style="padding: 2px 10px;" ${currentNavIdx >= clubMatches.length - 1 ? 'disabled' : ''}>&gt;</button>
       </div>
+
       <div style="display: flex; align-items: center; gap: 10px;">
-        ${activeRound !== currentRound ? `
+        ${currentNavIdx !== defaultIdx ? `
           <button onclick="resetToCurrentMatchRound()" class="primary" style="padding: 2px 10px; font-size: 11px; font-weight: 700;">
-            RETURN TO UPCOMING MATCH
+            RETURN TO NEXT UP FIXTURE
           </button>
         ` : `
-          <span style="font-size: 11px; color: ${matchFixture.played ? 'var(--text-muted)' : 'var(--accent)'}; font-weight: 700; text-transform: uppercase;">
-            ${matchFixture.played ? 'Match Concluded' : 'Upcoming Match'}
+          <span style="font-size: 11px; color: ${targetFixture.played ? 'var(--text-muted)' : 'var(--accent)'}; font-weight: 700; text-transform: uppercase;">
+            ${targetFixture.played ? 'MATCH CONCLUDED' : 'UPCOMING FIXTURE'}
           </span>
         `}
       </div>
@@ -242,10 +285,10 @@ export function renderMatchView(container, ctx) {
     <div class="panel" style="padding: 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
       <div>
         <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px;">
-          ${isHome ? 'HOME FIXTURE' : 'AWAY FIXTURE'}
+          ${currentItem.compName} • ${isHome ? 'HOME FIXTURE' : 'AWAY FIXTURE'}
         </div>
         <h2 style="font-size: 24px; margin: 0; color: #fff; cursor: pointer;" onclick="inspectTeam('${oppId}', 'squad')">
-          ${oppTeam.name || 'Unknown'}
+          ${oppTeam.name}
         </h2>
       </div>
 
@@ -257,8 +300,8 @@ export function renderMatchView(container, ctx) {
       </div>
     </div>
 
-    ${matchFixture.played ? renderPostMatchSection() : `
-      <!-- Opposition Scouting Report -->
+    ${targetFixture.played ? renderPostMatchSection() : `
+      <!-- Complete Opposition Scouting Report -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         <div class="panel" style="padding: 16px;">
           <h3 style="margin-top: 0; font-size: 13px; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px;">
@@ -267,15 +310,15 @@ export function renderMatchView(container, ctx) {
           <div style="display: flex; flex-direction: column; gap: 9px; font-size: 12px;">
             <div style="display: flex; justify-content: space-between;">
               <span style="color: var(--text-muted);">Current Standing:</span>
-              <strong style="color: #fff;">#${oppRank} (${oppRow.w}-${oppRow.d}-${oppRow.l} •${oppRow.pts} PTS)</strong>
+              <strong style="color: #fff;">#${oppRank || '—'} (${oppRow.w}-${oppRow.d}-${oppRow.l} •${oppRow.pts} PTS)</strong>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span style="color: var(--text-muted);">Avg xG / Game:</span>
-              <strong style="color: #fff; font-family: monospace;">${oppXgPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgRank} in Div)</span></strong>
+              <strong style="color: #fff; font-family: monospace;">${oppXgPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgRank || '—'})</span></strong>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span style="color: var(--text-muted);">Avg xGA / Game:</span>
-              <strong style="color: #fff; font-family: monospace;">${oppXgaPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgaRank} in Div)</span></strong>
+              <strong style="color: #fff; font-family: monospace;">${oppXgaPerGame} <span style="color: var(--text-muted); font-weight: normal; font-family: sans-serif;">(#${xgaRank || '—'})</span></strong>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 9px;">
               <span style="color: var(--text-muted);">Recent Form:</span>
@@ -332,14 +375,29 @@ export function setMatchReportSide(side, ctx, renderLayout) {
 }
 
 export function changeMatchRound(delta, ctx, renderLayout) {
-  const maxR = ctx.state.maxRounds || 38;
-  const currentRound = Math.max(1, Math.min(ctx.state.round, maxR));
-  const curr = ctx.viewedMatchRound !== null ? ctx.viewedMatchRound : currentRound;
-  ctx.viewedMatchRound = Math.max(1, Math.min(maxR, curr + delta));
+  const activeTeamId = ctx.viewedTeamId || ctx.state.userTeamId;
+  const activeTeam = ctx.state.teams[activeTeamId];
+  const calendar = ctx.state.calendar || {};
+
+  const clubMatches = getClubChronologicalMatches(calendar, activeTeamId, activeTeam.div);
+  if (clubMatches.length === 0) return;
+
+  let defaultIdx = clubMatches.findIndex(item => !item.played);
+  if (defaultIdx === -1) defaultIdx = clubMatches.length - 1;
+
+  const currentIdx = (ctx.viewedMatchNavIndex !== null && ctx.viewedMatchNavIndex !== undefined)
+    ? ctx.viewedMatchNavIndex
+    : defaultIdx;
+
+  ctx.viewedMatchNavIndex = Math.max(0, Math.min(clubMatches.length - 1, currentIdx + delta));
+  ctx.viewedMatchRound = null;
+  ctx.viewedMatchMoment = null;
   renderLayout();
 }
 
 export function resetToCurrentMatchRound(ctx, renderLayout) {
+  ctx.viewedMatchNavIndex = null;
   ctx.viewedMatchRound = null;
+  ctx.viewedMatchMoment = null;
   renderLayout();
 }
