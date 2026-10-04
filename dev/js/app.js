@@ -330,7 +330,7 @@ export function renderLayout() {
   const strip = getScheduleStripModel(context.state);
 
   document.getElementById('app-root').innerHTML = `
-    <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px;">
+    <header style="background: #11151c; border-bottom: 1px solid var(--border); padding: 8px 16px; position: sticky; top: 0; z-index: 100;">
       <!-- Single Unified Top Bar: Left (Club & Stage) | Center (4 Ticks) | Right (Action & Reset) -->
       <div style="max-width: 1200px; margin: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;">
         
