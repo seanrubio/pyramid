@@ -156,6 +156,8 @@ export function generatePlayer(DB, isGK, div, natCode = null) {
     archetypeName: archetype.name,
     age: 18 + Math.floor(Math.random() * 16),
     morphology: { heightCm, weightKg, bmi },
+    potentialAbility,
+    devProfile,
     attributes,
     traits,
     phaseGlyphs,
