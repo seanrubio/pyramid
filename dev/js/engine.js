@@ -16,12 +16,12 @@ export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
 
-// Zipfian / Power-Law weighted random selection (earlier names are heavily favored)
+// Helper for weighted random selection based on array position (earlier = heavier weight)
 function weightedChoice(arr) {
   if (!arr || arr.length === 0) return '';
   
-  // Power-law decay: index 0 is most common, with a sharp drop-off for rarer names
-  const weights = arr.map((_, index) => Math.pow(1 / (index + 1), 0.5));
+  // Calculate weights using an inverse rank decay (index 0 is heaviest)
+  const weights = arr.map((_, index) => 1 / (index + 2));
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   
   let randomVal = Math.random() * totalWeight;
