@@ -413,6 +413,8 @@ Object.assign(window, {
   setCompetitionView: (mode) => setCompetitionView(mode, context, renderLayout),
   setSelectedRegionalCup: (cup) => setSelectedRegionalCup(cup, context, renderLayout),
   selectCupRoundTab: (idx) => selectCupRoundTab(idx, context, renderLayout),
+  setSquadSeasonFilter: (val) => setSquadSeasonFilter(val, context, renderLayout),
+  setSquadCompFilter: (val) => setSquadCompFilter(val, context, renderLayout),
 });
 
 async function boot() {
