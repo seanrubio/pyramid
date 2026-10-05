@@ -793,8 +793,8 @@
     { "id": "salto", "name": "Salto", "country": "UY", "div": 10, "stadium": "Estadio Ernesto Dickinson", "rep": 10, "blueprint": "underdog_pressing", "region": "southeast_africa", "regional_cup": "Southeast African Cup" }
   ],
   "tierConfig": {
-    "base": 94.0,
-    "slope": 6.2,
+    "base": 90.0,
+    "slope": 2.2,
     "archetypeSigma": 5.0,
     "noiseSigma": 2.2
   },
