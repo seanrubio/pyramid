@@ -16,10 +16,30 @@ export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
 
+// Helper for weighted random selection based on array position (earlier = heavier weight)
+function weightedChoice(arr) {
+  if (!arr || arr.length === 0) return '';
+  
+  // Calculate weights using an inverse rank decay (index 0 is heaviest)
+  const weights = arr.map((_, index) => 1 / (index + 2));
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  
+  let randomVal = Math.random() * totalWeight;
+  for (let i = 0; i < arr.length; i++) {
+    randomVal -= weights[i];
+    if (randomVal <= 0) {
+      return arr[i];
+    }
+  }
+  return arr[0];
+}
+
 export function generatePlayerName(DB, countryCode = 'US') {
   const pool = DB.namePools[countryCode] || DB.namePools['US'] || Object.values(DB.namePools)[0];
-  const first = pool.first[Math.floor(Math.random() * pool.first.length)];
-  const last = pool.last[Math.floor(Math.random() * pool.last.length)];
+  
+  const first = weightedChoice(pool.first);
+  const last = weightedChoice(pool.last);
+  
   return `${first} ${last}`;
 }
 
