@@ -114,15 +114,16 @@ export function getCompetitionPlayerStats(p, comp = 'league') {
   return p.stats[comp] || p.stats.league;
 }
 
-export function generatePlayer(DB, isGK, div, natCode = null) {
+export function generatePlayer(DB, isGK, div, natCode = null, forcedArchetypeKey = null, talentDelta = 0) {
   const countryObj = natCode ? getCountry(DB, natCode) : DB.countries[Math.floor(Math.random() * DB.countries.length)];
   const pool = isGK ? GK_ARCHETYPES : OUTFIELD_ARCHETYPES;
-  const archetypeKey = pool[Math.floor(Math.random() * pool.length)];
+  const archetypeKey = forcedArchetypeKey || sampleChoice(pool);
   const archetype = DB.archetypes[archetypeKey];
 
   const tierMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
   const potentialAbility = Math.min(99, Math.round(tierMean + randomGaussian(10, 4)));
   const devProfile = assignDevProfileForArchetype(archetypeKey);
+  
   const attributes = {};
   const traits = [];
 
@@ -130,7 +131,8 @@ export function generatePlayer(DB, isGK, div, natCode = null) {
   const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
 
   for (const [pillar, weight] of Object.entries(archetype.weights)) {
-    const rawVal = tierMean + (weight * DB.tierConfig.archetypeSigma) + randomGaussian(0, DB.tierConfig.noiseSigma);
+    // Apply talentDelta here cleanly during generation!
+    const rawVal = (tierMean + talentDelta) + (weight * DB.tierConfig.archetypeSigma) + randomGaussian(0, DB.tierConfig.noiseSigma);
     const score = Math.max(1, Math.min(99, Math.round(rawVal)));
     attributes[pillar] = score;
 
@@ -178,53 +180,27 @@ export function createFullSquad(DB, team) {
   const style = team.tactics ? (team.tactics.chanceCreation || team.tactics.buildMid) : 'mixed';
   const press = team.tactics ? team.tactics.press : 'mid block';
 
-  // 1. Resolve host country (checks team property first, then DB.cities by id or name)
   const city = DB.cities?.find(c => c.id === team.id || c.name === team.name);
   const domesticNat = team.country || city?.country || 'US';
 
   let favoredPool = BLUEPRINT_ARCHETYPE_MAP[style];
   if (!favoredPool && press === 'gegenpress') favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
 
-  // 2. Generate 2 GKs (100% domestic)
+  // 1. Generate 2 GKs (100% domestic)
   for (let i = 0; i < 2; i++) {
     squad.push(generatePlayer(DB, true, div, domesticNat));
   }
 
-  // 3. Generate 21 Outfield Players (100% domestic)
+  // 2. Generate 21 Outfield Players (100% domestic)
   for (let i = 0; i < 21; i++) {
     const archetypeKey = (favoredPool && Math.random() < 0.65) ? sampleChoice(favoredPool) : sampleChoice(OUTFIELD_ARCHETYPES);
-    const player = generatePlayer(DB, false, div, domesticNat);
-    player.archetypeKey = archetypeKey;
-    const arch = DB.archetypes[archetypeKey];
-    player.archetypeName = arch.name;
-
-    const tierMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
-    const assetCutoff = 1.65 * DB.tierConfig.archetypeSigma;
-    const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
-
+    
     let talentDelta = 0;
     if (i === 0 || i === 6) talentDelta = 3.5;
     else if (i >= 17) talentDelta = -2.5;
 
-    player.traits = [];
-    for (const [pillar, weight] of Object.entries(arch.weights)) {
-      const rawVal = (tierMean + talentDelta) + (weight * DB.tierConfig.archetypeSigma) + randomGaussian(0, DB.tierConfig.noiseSigma);
-      const score = Math.max(1, Math.min(99, Math.round(rawVal)));
-      player.attributes[pillar] = score;
-
-      if (score >= tierMean + assetCutoff) player.traits.push(`[+${DB.traits[pillar].asset}]`);
-      else if (score <= tierMean - liabilityCutoff) player.traits.push(`[-${DB.traits[pillar].liability}]`);
-    }
-
-    const baseMorph = DB.morphologyBaselines.outfield;
-    player.morphology.heightCm = Math.round(randomGaussian(baseMorph.heightMean + arch.morph.heightDelta, baseMorph.heightStd));
-    player.morphology.bmi = +(randomGaussian(baseMorph.bmiMean + arch.morph.bmiDelta, baseMorph.bmiStd)).toFixed(1);
-    player.morphology.weightKg = Math.round(player.morphology.bmi * Math.pow(player.morphology.heightCm / 100, 2));
-
-    const phaseScores = getPlayerPhaseScores(player);
-    const getGlyph = (val) => (val >= tierMean + 1.5 ? "+" : val <= tierMean - 0.7 ? "-" : "✓");
-    player.phaseGlyphs = `${getGlyph(phaseScores.ip)} / ${getGlyph(phaseScores.oop)} / ${getGlyph(phaseScores.tr)}`;
-
+    // Pass everything straight into generatePlayer!
+    const player = generatePlayer(DB, false, div, domesticNat, archetypeKey, talentDelta);
     squad.push(player);
   }
 
