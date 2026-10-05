@@ -6,6 +6,8 @@ import {
   generateUniversalCupR1, 
   advanceMomentSimulation, 
   resetSeasonClean, 
+  setSquadSeasonFilter, 
+  setSquadCompFilter,
   getCurrentCalendarSlot 
 } from './engine.js';
 import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadViewMode } from './ui/squadView.js';
