@@ -1,16 +1,6 @@
 import { BLUEPRINT_PRESETS } from './constants.js';
-import { 
-  createFullSquad, 
-  autoAssignLineup, 
-  generateMasterCalendar, 
-  generateUniversalCupR1, 
-  advanceMomentSimulation, 
-  resetSeasonClean, 
-  setSquadSeasonFilter, 
-  setSquadCompFilter,
-  getCurrentCalendarSlot 
-} from './engine.js';
-import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadViewMode } from './ui/squadView.js';
+import { createFullSquad, autoAssignLineup, generateMasterCalendar, generateUniversalCupR1, advanceMomentSimulation, resetSeasonClean, getCurrentCalendarSlot } from './engine.js';
+import { renderSquadView, sortSquad, handleSlotChange, autoPickLineup, setSquadViewMode, setSquadSeasonFilter, setSquadCompFilter } from './ui/squadView.js';
 import { renderTacticsView, updateFormation, setTactics } from './ui/tacticsView.js';
 import { renderMatchView, changeMatchRound, resetToCurrentMatchRound, setMatchReportSide } from './ui/matchView.js';
 import { renderFixturesView } from './ui/fixturesView.js';
