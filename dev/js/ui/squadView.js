@@ -315,6 +315,7 @@ export function renderSquadView(container, ctx) {
       </table>
     </div>
   `;
+}
 
 export function setSquadViewMode(mode, ctx, renderLayout) {
   ctx.squadViewMode = mode;
