@@ -35,7 +35,7 @@ export function renderTraitBadges(traits = []) {
 
 export function formatShortName(fullName) {
   const parts = fullName.trim().split(/\s+/);
-  return parts.length > 1 ? `${parts[0][0]}.${parts.slice(1).join(' ')}` : fullName;
+  return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : fullName;
 }
 
 export function getSlotRank(slot) {
@@ -125,12 +125,12 @@ export function renderSquadView(container, ctx) {
 
   const thStyle = (key, width, align = 'center') => {
     const isSorted = sortKey === key;
-    return `cursor: pointer; width: ${width}; text-align: ${align}; color:${isSorted ? 'var(--accent)' : 'var(--text-muted)'};`;
+    return `cursor: pointer; width: ${width}; text-align: ${align}; color: ${isSorted ? 'var(--accent)' : 'var(--text-muted)'};`;
   };
 
   const tdStyle = (key, align = 'center') => {
     const isSorted = sortKey === key;
-    return `text-align: ${align}; color:${isSorted ? 'var(--accent)' : 'var(--text-muted)'}; font-family: monospace; font-size: 11px;`;
+    return `text-align: ${align}; color: ${isSorted ? 'var(--accent)' : 'var(--text-muted)'}; font-family: monospace; font-size: 11px;`;
   };
 
   let tableHeaderHtml = '';
@@ -291,3 +291,157 @@ export function renderSquadView(container, ctx) {
         </select>
         <select onchange="setSquadCompFilter(this.value)" style="padding: 2px 6px; font-size: 11px; background: #161b22; color: #fff; border: 1px solid var(--border);">
           <option value="all" ${compFilter === 'all' ? 'selected' : ''}>All Competitions</option>
+          <option value="league" ${compFilter === 'league' ? 'selected' : ''}>Pyramid League</option>
+          <option value="regional" ${compFilter === 'regional' ? 'selected' : ''}>Regional Cup</option>
+          <option value="cup" ${compFilter === 'cup' ? 'selected' : ''}>Universal Cup</option>
+        </select>
+        ${isUser ? `<button onclick="autoPickLineup()">AUTO-PICK XI</button>` : ''}
+      </div>
+    </div>
+
+    <div class="panel" style="overflow-x: auto;">
+      <table>
+        <thead>
+          ${tableHeaderHtml}
+        </thead>
+        <tbody>
+          ${tableBodyRows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+export function setSquadViewMode(mode, ctx, renderLayout) {
+  ctx.squadViewMode = mode;
+  renderLayout();
+}
+
+export function setSquadSeasonFilter(val, ctx, renderLayout) {
+  ctx.squadSeasonFilter = val;
+  renderLayout();
+}
+
+export function setSquadCompFilter(val, ctx, renderLayout) {
+  ctx.squadCompFilter = val;
+  renderLayout();
+}
+
+export function handleSlotChange(pid, newSlot, ctx, renderLayout, saveGameState) {
+  const team = ctx.state.teams[ctx.state.userTeamId];
+  const player = team.squad.find(p => p.id === pid);
+  if (!player) return;
+
+  const oldSlot = player.slot || null;
+  const targetSlot = newSlot || null;
+
+  if (targetSlot) {
+    const occupant = team.squad.find(p => p.id !== pid && p.slot === targetSlot);
+    if (occupant) occupant.slot = oldSlot;
+  }
+  player.slot = targetSlot;
+
+  ctx.squadSort = { key: 'slot', asc: true };
+  const getLastName = (fullName) => fullName.trim().split(/\s+/).pop().toLowerCase();
+  team.squad.sort((a, b) => {
+    const rA = getSlotRank(a.slot);
+    const rB = getSlotRank(b.slot);
+    if (rA !== rB) return rA - rB;
+    return getLastName(a.name).localeCompare(getLastName(b.name));
+  });
+
+  saveGameState();
+  renderLayout();
+}
+
+export function autoPickLineup(ctx, renderLayout, saveGameState) {
+  const team = ctx.state.teams[ctx.state.userTeamId];
+  autoAssignLineup(ctx.DB, team);
+  
+  ctx.squadSort = { key: 'slot', asc: true };
+  team.squad.sort((a, b) => getSlotRank(a.slot) - getSlotRank(b.slot));
+
+  saveGameState();
+  renderLayout();
+}
+
+export function sortSquad(key, ctx, renderLayout) {
+  const s = ctx.squadSort;
+  if (s.key === key) s.asc = !s.asc;
+  else { s.key = key; s.asc = (key === 'name' || key === 'slot'); }
+
+  const team = ctx.state.teams[ctx.viewedTeamId] || ctx.state.teams[ctx.state.userTeamId];
+  const GLYPH_WEIGHTS = { '+': 2, '✓': 1, '-': 0 };
+  const getLastName = (fullName) => fullName.trim().split(/\s+/).pop().toLowerCase();
+
+  const getMetricVal = (p, k) => {
+    // Dynamic metric pull respecting current filter context during sort
+    const seasonFilter = ctx.squadSeasonFilter || 'current';
+    const compFilter = ctx.squadCompFilter || 'all';
+    let st = {};
+    let mins = 0;
+
+    if (seasonFilter === 'current') {
+      mins = p.minutesPlayed || 0;
+      const comps = compFilter === 'all' ? ['league', 'regional', 'cup'] : [compFilter];
+      comps.forEach(c => {
+        const sObj = p.stats?.[c];
+        if (sObj) Object.keys(sObj).forEach(metric => { st[metric] = (st[metric] || 0) + (sObj[metric] || 0); });
+      });
+    } else {
+      const arch = p.archiveStats?.[seasonFilter];
+      if (arch) {
+        mins = arch.minutesPlayed || 0;
+        const comps = compFilter === 'all' ? ['league', 'regional', 'cup'] : [compFilter];
+        comps.forEach(c => {
+          const sObj = arch[c];
+          if (sObj) Object.keys(sObj).forEach(metric => { st[metric] = (st[metric] || 0) + (sObj[metric] || 0); });
+        });
+      }
+    }
+
+    const isP90 = ctx.squadViewMode === 'p90';
+    if (k === 'cmpPct') return (st.passes || 0) > 0 ? (st.passesComp / st.passes) : -1;
+    if (k === 'crsPct') return (st.crosses || 0) > 0 ? (st.crossesComp / st.crosses) : -1;
+    if (k === 'tckPct') return (st.tackles || 0) > 0 ? (st.tacklesWon / st.tckls) : -1;
+    if (k === 'aerPct') return (st.aerialsContested || 0) > 0 ? (st.aerialsWon / st.aerialsContested) : -1;
+    if (k === 'svPct') return (st.shotsFaced || 0) > 0 ? (st.saves / st.shotsFaced) : -1;
+
+    let baseVal = st[k] || 0;
+    if (isP90) return mins > 0 ? (baseVal / mins) * 90 : 0;
+    return baseVal;
+  };
+
+  team.squad.sort((a, b) => {
+    if (s.key === 'slot') return s.asc ? getSlotRank(a.slot) - getSlotRank(b.slot) : getSlotRank(b.slot) - getSlotRank(a.slot);
+    if (s.key === 'name') {
+      const cmp = getLastName(a.name).localeCompare(getLastName(b.name));
+      return s.asc ? cmp : -cmp;
+    }
+    if (['ip', 'oop', 'tr'].includes(s.key)) {
+      const valA = GLYPH_WEIGHTS[parseGlyphs(a.phaseGlyphs)[s.key]] ?? 1;
+      const valB = GLYPH_WEIGHTS[parseGlyphs(b.phaseGlyphs)[s.key]] ?? 1;
+      return valA !== valB ? (s.asc ? valA - valB : valB - valA) : getLastName(a.name).localeCompare(getLastName(b.name));
+    }
+    if (['goals', 'xg', 'shots', 'assists', 'xa', 'keyPasses', 'cmpPct', 'crsPct', 'tckPct', 'aerPct', 'svPct'].includes(s.key)) {
+      const valA = getMetricVal(a, s.key);
+      const valB = getMetricVal(b, s.key);
+      return s.asc ? valA - valB : valB - valA;
+    }
+    if (s.key === 'minutesPlayed') {
+      const minsA = ctx.squadSeasonFilter === 'current' ? (a.minutesPlayed || 0) : (a.archiveStats?.[ctx.squadSeasonFilter]?.minutesPlayed || 0);
+      const minsB = ctx.squadSeasonFilter === 'current' ? (b.minutesPlayed || 0) : (b.archiveStats?.[ctx.squadSeasonFilter]?.minutesPlayed || 0);
+      return s.asc ? minsA - minsB : minsB - minsA;
+    }
+    if (s.key === 'age') return s.asc ? a.age - b.age : b.age - a.age;
+    if (s.key === 'heightCm') return s.asc ? a.morphology.heightCm - b.morphology.heightCm : b.morphology.heightCm - a.morphology.heightCm;
+    if (s.key === 'weightKg') return s.asc ? a.morphology.weightKg - b.morphology.weightKg : b.morphology.weightKg - a.morphology.weightKg;
+
+    let valA = a[s.key] || 0;
+    let valB = b[s.key] || 0;
+    if (typeof valA === 'string') return s.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    return s.asc ? valA - valB : valB - valA;
+  });
+
+  renderLayout();
+}
