@@ -171,10 +171,14 @@ export function renderLeagueView(container, ctx) {
     const xgdSign = r.xgd > 0 ? '+' : '';
     const ppg = r.p > 0 ? (r.pts / r.p).toFixed(2) : '0.00';
 
+    // Append division parenthetical with just the number under Regional Cups
+    const teamDiv = ctx.state.teams[r.teamId]?.div;
+    const displayName = isRegional && teamDiv ? `${r.name} <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(${teamDiv})</span>` : r.name;
+
     return `
       <tr style="${zoneBorder} ${zoneBg}">
         <td style="text-align: center; color: var(--text-muted); font-weight: ${rank <= 4 || isRelegated ? '700' : 'normal'};">${rank}</td>
-        <td><span onclick="inspectTeam('${r.teamId}', 'squad')" style="cursor: pointer; font-weight: ${isUser ? '700' : '500'};">${r.name}</span></td>
+        <td><span onclick="inspectTeam('${r.teamId}', 'squad')" style="cursor: pointer; font-weight: ${isUser ? '700' : '500'};">${displayName}</span></td>
         <td style="text-align: center; color: var(--text-muted);">${r.p}</td>
         <td style="text-align: center;">${r.w}</td>
         <td style="text-align: center;">${r.d}</td>
@@ -220,8 +224,17 @@ export function renderLeagueView(container, ctx) {
 
   const fixturesHtml = roundMatches.length > 0 ? roundMatches.map(({ fix, week, moment }) => {
     const isUserMatch = (fix.home === ctx.state.userTeamId || fix.away === ctx.state.userTeamId);
-    const homeName = ctx.state.teams[fix.home]?.name || 'Unknown';
-    const awayName = ctx.state.teams[fix.away]?.name || 'Unknown';
+    
+    const homeTeamObj = ctx.state.teams[fix.home];
+    const awayTeamObj = ctx.state.teams[fix.away];
+
+    let homeName = homeTeamObj?.name || 'Unknown';
+    let awayName = awayTeamObj?.name || 'Unknown';
+
+    if (isRegional) {
+      if (homeTeamObj?.div) homeName += ` <span style="font-size: 9px; color: var(--text-muted);">(${homeTeamObj.div})</span>`;
+      if (awayTeamObj?.div) awayName += ` <span style="font-size: 9px; color: var(--text-muted);">(${awayTeamObj.div})</span>`;
+    }
 
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 3px; background: ${isUserMatch ? 'rgba(88, 166, 255, 0.08)' : '#0d1117'}; border: 1px solid var(--border);">
