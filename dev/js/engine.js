@@ -12,6 +12,46 @@ export const CUP_ROUND_LABELS = [
   'Universal Cup Final'
 ];
 
+const DEV_PROFILES = [
+  { key: 'normal', weight: 0.82 },
+  { key: 'physical_freak', weight: 0.03 },
+  { key: 'late_bloomer', weight: 0.04 },
+  { key: 'early_peaker', weight: 0.03 },
+  { key: 'old_soul', weight: 0.03 },
+  { key: 'hothead', weight: 0.05 }
+];
+
+function assignDevProfileForArchetype(archetypeKey) {
+  let weights = { ...DEV_PROFILES.reduce((acc, p) => ({ ...acc, [p.key]: p.weight }), {}) };
+
+  const technicalArchetypes = ['artist', 'pocket_player', 'anticipator', 'gk_possession_platform'];
+  const physicalArchetypes = ['runner_in_behind', 'two_way', 'soldier', 'disrupter'];
+  const calmArchetypes = ['steady_eddy', 'organizer'];
+
+  if (technicalArchetypes.includes(archetypeKey)) {
+    weights.late_bloomer += 0.08;
+    weights.physical_freak -= 0.02;
+  }
+  if (physicalArchetypes.includes(archetypeKey)) {
+    weights.early_peaker += 0.06;
+    weights.physical_freak += 0.04;
+    weights.hothead += 0.03;
+  }
+  if (calmArchetypes.includes(archetypeKey)) {
+    weights.hothead = 0.00;
+    weights.old_soul += 0.07;
+  }
+
+  const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  let r = Math.random() * total;
+
+  for (const [key, weight] of Object.entries(weights)) {
+    r -= weight;
+    if (r <= 0) return key;
+  }
+  return 'normal';
+}
+
 export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
@@ -81,6 +121,8 @@ export function generatePlayer(DB, isGK, div, natCode = null) {
   const archetype = DB.archetypes[archetypeKey];
 
   const tierMean = DB.tierConfig.base - (div * DB.tierConfig.slope);
+  const potentialAbility = Math.min(99, Math.round(tierMean + randomGaussian(10, 4)));
+  const devProfile = assignDevProfileForArchetype(archetypeKey);
   const attributes = {};
   const traits = [];
 
@@ -1045,6 +1087,57 @@ export function sortTableEntries(entries) {
   });
 }
 
+export function applyPlayerAgingAndProgression(player) {
+  player.age += 1;
+  const profile = player.devProfile || 'normal';
+  const age = player.age;
+
+  for (const [pillar, val] of Object.entries(player.attributes)) {
+    let delta = 0;
+
+    // 1. PHYSICAL GROUP: dynamicPower, bioenergetics
+    if (['dynamicPower', 'bioenergetics'].includes(pillar)) {
+      if (age < 24) delta = randomGaussian(1.5, 0.4);
+      else if (age >= 24 && age <= 29) delta = randomGaussian(0, 0.2);
+      else {
+        let decayRate = -1.5;
+        if (profile === 'physical_freak') decayRate = -0.5; // Exception
+        if (profile === 'early_peaker') decayRate = -2.5;   // Exception
+        delta = randomGaussian(decayRate, 0.4);
+      }
+    }
+    
+    // 2. COGNITIVE GROUP: scanning, processing, regulation
+    else if (['scanning', 'processing', 'regulation'].includes(pillar)) {
+      if (age < 32) {
+        let growthRate = 1.0;
+        if (profile === 'late_bloomer') growthRate = 1.8;   // Exception
+        if (profile === 'early_peaker') growthRate = 0.2;   // Exception
+        if (profile === 'old_soul' && age < 23) growthRate = 2.0; // Exception
+        delta = randomGaussian(growthRate, 0.3);
+      } else {
+        delta = randomGaussian(0.2, 0.2); // Veteran plateau / minimal growth
+      }
+    }
+
+    // 3. INDEPENDENT GROUP: proprioception, grit, stewardship
+    else {
+      if (profile === 'hothead' && pillar === 'regulation') {
+        delta = randomGaussian(-1.2, 0.4); // Hothead penalty
+      } else {
+        delta = randomGaussian(0.2, 0.3);
+      }
+    }
+
+    let newScore = Math.round(val + delta);
+    // Enforce Potential Ability ceiling during growth phases
+    if (player.potentialAbility && newScore > player.potentialAbility && delta > 0) {
+      newScore = player.potentialAbility;
+    }
+    player.attributes[pillar] = Math.max(1, Math.min(99, newScore));
+  }
+}
+
 export function resetSeasonClean(state) {
   const promotions = {};
   const relegations = {};
@@ -1102,6 +1195,20 @@ export function resetSeasonClean(state) {
 
   Object.values(state.teams).forEach(t => {
     (t.squad || []).forEach(p => {
+      // Archive current season stats
+      if (!p.archiveStats) p.archiveStats = {};
+      p.archiveStats[state.season] = {
+        age: p.age,
+        minutesPlayed: p.minutesPlayed,
+        league: { ...p.stats.league },
+        regional: { ...p.stats.regional },
+        cup: { ...p.stats.cup }
+      };
+
+      // Run annual aging and progression pass
+      applyPlayerAgingAndProgression(p);
+
+      // Reset active season metrics
       p.minutesPlayed = 0;
       p.stats = {
         league: createDefaultPlayerStats(),
