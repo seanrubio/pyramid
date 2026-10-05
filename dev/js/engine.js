@@ -21,7 +21,7 @@ function weightedChoice(arr) {
   if (!arr || arr.length === 0) return '';
   
   // Power-law decay: index 0 is most common, with a sharp drop-off for rarer names
-  const weights = arr.map((_, index) => Math.pow(1 / (index + 1), 1.5));
+  const weights = arr.map((_, index) => Math.pow(1 / (index + 1), 0.5));
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   
   let randomVal = Math.random() * totalWeight;
