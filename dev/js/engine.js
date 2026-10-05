@@ -16,8 +16,8 @@ export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
 
-export function generatePlayerName(DB, region = 'anglo') {
-  const pool = DB.namePools[region] || DB.namePools['anglo'];
+export function generatePlayerName(DB, countryCode = 'US') {
+  const pool = DB.namePools[countryCode] || DB.namePools['US'] || Object.values(DB.namePools)[0];
   const first = pool.first[Math.floor(Math.random() * pool.first.length)];
   const last = pool.last[Math.floor(Math.random() * pool.last.length)];
   return `${first} ${last}`;
@@ -87,7 +87,7 @@ export function generatePlayer(DB, isGK, div, natCode = null) {
 
   return {
     id: 'p_' + Math.random().toString(36).substr(2, 9),
-    name: generatePlayerName(DB, countryObj.region),
+    name: generatePlayerName(DB, countryObj.code),
     nat: countryObj.code,
     isGK,
     archetypeKey,
@@ -319,7 +319,6 @@ export function generateUniversalCupR1(teams, prevSeasonByes = null) {
   if (prevSeasonByes && prevSeasonByes.length === 56) {
     byeIds = [...prevSeasonByes];
   } else {
-    // Season 1: All Div 1 (20), Div 2 (20), and 16 randomly chosen Div 3 clubs = 56 byes
     const div1 = allIds.filter(id => teams[id].div === 1);
     const div2 = allIds.filter(id => teams[id].div === 2);
     const div3 = allIds.filter(id => teams[id].div === 3);
@@ -360,7 +359,6 @@ export function generateMasterCalendar(teams, cupState = null) {
     calendar[w] = { 1: null, 2: null, 3: null, 4: null };
   }
 
-  // WEEKS 1..4: Pre-Season Window
   for (let w = 1; w <= 4; w++) {
     for (let m = 1; m <= 4; m++) {
       calendar[w][m] = {
@@ -371,7 +369,6 @@ export function generateMasterCalendar(teams, cupState = null) {
     }
   }
 
-  // WEEKS 5..16: Regional Tournament
   const cupGroups = {};
   Object.values(teams).forEach(t => {
     if (t.regionalCup) {
@@ -424,7 +421,6 @@ export function generateMasterCalendar(teams, cupState = null) {
     calendar[w][3] = { type: 'training', comp: 'regional', name: 'Tactical Preparation' };
   }
 
-  // WEEKS 17..20: Secondary Window
   for (let w = 17; w <= 20; w++) {
     for (let m = 1; m <= 4; m++) {
       calendar[w][m] = {
@@ -435,7 +431,6 @@ export function generateMasterCalendar(teams, cupState = null) {
     }
   }
 
-  // WEEKS 21..51: League Season (38 matches) + Universal Cup
   const leagueRoundRobin = {};
   for (let d = 1; d <= 10; d++) {
     const divTeams = Object.values(teams).filter(t => t.div === d).map(t => t.id);
@@ -488,7 +483,6 @@ export function generateMasterCalendar(teams, cupState = null) {
     calendar[w][4] = { type: 'match', comp: 'league', leagueRound: weekendRnd + 1, matches: weekendMatches };
   }
 
-  // WEEK 52: Universal Cup Final
   calendar[52][1] = { type: 'training', comp: 'cup', name: 'Cup Final Preparation' };
   calendar[52][2] = { type: 'training', comp: 'cup', name: 'Cup Final Preparation' };
   calendar[52][3] = { type: 'training', comp: 'cup', name: 'Cup Final Preparation' };
@@ -1035,18 +1029,15 @@ export function resetSeasonClean(state) {
   const promotions = {};
   const relegations = {};
 
-  // 1. Calculate promotions & relegations from completed tables
   for (let d = 1; d <= 10; d++) {
     const sorted = sortTableEntries(state.tables[d] || []);
     if (d > 1) promotions[d] = sorted.slice(0, 4).map(e => e.teamId);
     if (d < 10) relegations[d] = sorted.slice(-4).map(e => e.teamId);
   }
 
-  // 2. Calculate Div 3 Byes BEFORE resetting tables (Positions 5-20)
   const prevSortedDiv3 = sortTableEntries(state.tables[3] || []);
   const nonPromotedDiv3 = prevSortedDiv3.slice(4).map(r => r.teamId);
 
-  // 3. Apply promotion and relegation to team objects
   for (let d = 2; d <= 10; d++) {
     (promotions[d] || []).forEach(teamId => { 
       if (state.teams[teamId]) state.teams[teamId].div = d - 1; 
@@ -1058,7 +1049,6 @@ export function resetSeasonClean(state) {
     });
   }
 
-  // 4. Initialize fresh league tables
   state.tables = {};
   for (let d = 1; d <= 10; d++) {
     state.tables[d] = Object.values(state.teams)
@@ -1070,7 +1060,6 @@ export function resetSeasonClean(state) {
       }));
   }
 
-  // 5. Initialize regional tables
   state.regionalTables = {};
   Object.values(state.teams).forEach(t => {
     if (t.regionalCup) {
@@ -1083,7 +1072,6 @@ export function resetSeasonClean(state) {
     }
   });
 
-  // 6. Setup 56 Cup Byes: All new Div 1 (20), new Div 2 (20), and 16 non-promoted Div 3
   const nextByes = [
     ...Object.values(state.teams).filter(t => t.div === 1).map(t => t.id),
     ...Object.values(state.teams).filter(t => t.div === 2).map(t => t.id),
@@ -1092,7 +1080,6 @@ export function resetSeasonClean(state) {
 
   state.cupState = generateUniversalCupR1(state.teams, nextByes);
 
-  // 7. Reset individual player in-season tallies
   Object.values(state.teams).forEach(t => {
     (t.squad || []).forEach(p => {
       p.minutesPlayed = 0;
@@ -1104,19 +1091,17 @@ export function resetSeasonClean(state) {
     });
   });
 
-  // 8. Generate calendar & advance season pointer
   state.calendar = generateMasterCalendar(state.teams, state.cupState);
   state.season++;
   state.week = 1;
   state.moment = 1;
-} // <-- Correctly closed here
+}
 
 export function adaptLineupToFormation(DB, team, newFormation) {
   team.formation = newFormation;
   const formRoles = FORMATIONS[newFormation] || FORMATIONS['4-4-2 Flat'];
   const bpKey = team.tactics ? team.tactics.blueprint : null;
 
-  // 1. Separate current starters and bench players
   const currentStarters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
   
   if (currentStarters.length !== 11) {
@@ -1124,14 +1109,11 @@ export function adaptLineupToFormation(DB, team, newFormation) {
     return;
   }
 
-  // Clear starter slots only (B1–B9 remain unchanged)
   currentStarters.forEach(p => { p.slot = null; });
 
-  // 2. Assign Goalkeeper to S1
   const gk = currentStarters.find(p => p.isGK) || currentStarters[0];
   gk.slot = 'S1';
 
-  // 3. Slot the remaining 10 outfield starters into S2..S11 based on best fit
   const availableOutfield = currentStarters.filter(p => p.id !== gk.id);
   const outfieldSlots = formRoles.slice(1).map((role, idx) => ({
     role,
