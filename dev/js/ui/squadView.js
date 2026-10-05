@@ -270,6 +270,9 @@ export function renderSquadView(container, ctx) {
     `;
   }).join('');
 
+  // Conditionally render season and comp filters only when viewing stats
+  const showStatsFilters = (mode !== 'general');
+
   container.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
       <div style="display: flex; gap: 3px; align-items: center;">
@@ -284,17 +287,19 @@ export function renderSquadView(container, ctx) {
         `).join('')}
       </div>
 
-      <!-- Multi-Competition & Season Filters -->
+      <!-- Multi-Competition & Season Filters (Visible on Stats views only) -->
       <div style="display: flex; gap: 6px; align-items: center;">
-        <select onchange="setSquadSeasonFilter(this.value)" style="padding: 2px 6px; font-size: 11px; background: #161b22; color: #fff; border: 1px solid var(--border);">
-          ${availableSeasons.map(s => `<option value="${s.val}" ${seasonFilter === s.val ? 'selected' : ''}>${s.label}</option>`).join('')}
-        </select>
-        <select onchange="setSquadCompFilter(this.value)" style="padding: 2px 6px; font-size: 11px; background: #161b22; color: #fff; border: 1px solid var(--border);">
-          <option value="all" ${compFilter === 'all' ? 'selected' : ''}>All Competitions</option>
-          <option value="league" ${compFilter === 'league' ? 'selected' : ''}>Pyramid League</option>
-          <option value="regional" ${compFilter === 'regional' ? 'selected' : ''}>Regional Cup</option>
-          <option value="cup" ${compFilter === 'cup' ? 'selected' : ''}>Universal Cup</option>
-        </select>
+        ${showStatsFilters ? `
+          <select onchange="setSquadSeasonFilter(this.value)" style="padding: 2px 6px; font-size: 11px; background: #161b22; color: #fff; border: 1px solid var(--border);">
+            ${availableSeasons.map(s => `<option value="${s.val}" ${seasonFilter === s.val ? 'selected' : ''}>${s.label}</option>`).join('')}
+          </select>
+          <select onchange="setSquadCompFilter(this.value)" style="padding: 2px 6px; font-size: 11px; background: #161b22; color: #fff; border: 1px solid var(--border);">
+            <option value="all" ${compFilter === 'all' ? 'selected' : ''}>All Competitions</option>
+            <option value="league" ${compFilter === 'league' ? 'selected' : ''}>Pyramid League</option>
+            <option value="regional" ${compFilter === 'regional' ? 'selected' : ''}>Regional Cup</option>
+            <option value="cup" ${compFilter === 'cup' ? 'selected' : ''}>Universal Cup</option>
+          </select>
+        ` : ''}
         ${isUser ? `<button onclick="autoPickLineup()">AUTO-PICK XI</button>` : ''}
       </div>
     </div>
@@ -310,7 +315,6 @@ export function renderSquadView(container, ctx) {
       </table>
     </div>
   `;
-}
 
 export function setSquadViewMode(mode, ctx, renderLayout) {
   ctx.squadViewMode = mode;
