@@ -929,6 +929,9 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   const executeSubstitution = (team, units, side, candidate, freshSub, minute, maxTicks, isHalftimeWindow = false) => {
     if (subState[side].count >= 5) return false;
     if (!isHalftimeWindow && subState[side].windowsUsed >= 3) return false;
+    
+    // Safety: Never allow a player to sub for themselves
+    if (!candidate || !freshSub || candidate.id === freshSub.id) return false;
 
     let targetList = null;
     const isNowGK = candidate.isGK || freshSub.isEmergencyGK;
@@ -949,9 +952,12 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     if (targetList || isNowGK) {
       if (!isNowGK && targetList) {
         const idx = targetList.findIndex(p => p.id === candidate.id);
-        if (idx !== -1) targetList[idx] = freshSub;
+        if (idx !== -1) {
+          targetList[idx] = freshSub;
+        }
       }
 
+      // Preserve slot assignment and clear outgoing slot
       freshSub.slot = candidate.slot;
       candidate.slot = null;
 
