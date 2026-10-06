@@ -1167,7 +1167,7 @@ export function applyRestRecovery(state) {
       
       const bio = p.attributes?.bioenergetics || 70;
       // Recovery rate scales with bioenergetics (roughly 3% to 6% recovery per non-match tick)
-      const recovery = 2.5 + (bio / 30);
+      const recovery = (bio / 30);
       p.condition = Math.min(100, parseFloat((p.condition + recovery).toFixed(2)));
     });
   });
