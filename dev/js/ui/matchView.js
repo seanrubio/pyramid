@@ -174,7 +174,7 @@ export function renderMatchView(container, ctx) {
               icon = '🟥';
               title = shortName(ev.player);
             } else if (ev.type === 'injury') {
-              icon = '🏥';
+              icon = '🚑';
               title = shortName(ev.player);
               subtext = 'Injury';
             } else if (ev.type === 'substitution') {
