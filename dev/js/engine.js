@@ -306,15 +306,18 @@ export function validateLineup(team) {
   const hasGk = starters.some(p => p.isGK);
   if (!hasGk) return { valid: false, error: 'No goalkeeper assigned in starting XI.' };
   
-  // ---> ENFORCE SUSPENSION & INJURY BLOCK HERE:
-  const unauthorizedPlayers = starters.filter(p => p.isInjured || p.isSuspended || p.hasRedCard);
+  // ---> Check BOTH starters AND bench players (any active slot S# or B#)
+  const allMatchDayPlayers = team.squad.filter(p => p.slot && (p.slot.startsWith('S') || p.slot.startsWith('B')));
+  const unauthorizedPlayers = allMatchDayPlayers.filter(p => p.isInjured || p.isSuspended || p.hasRedCard);
+  
   if (unauthorizedPlayers.length > 0) {
     const names = unauthorizedPlayers.map(p => p.name).join(', ');
-    return { valid: false, error: `Cannot field unavailable players: ${names}` };
+    return { valid: false, error: `Cannot include unavailable players in matchday squad: ${names}` };
   }
 
   return { valid: true };
 }
+
 export function buildRoundRobin(teamIds) {
   let pool = [...teamIds];
   const hasGhost = (pool.length % 2 !== 0);
