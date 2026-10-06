@@ -660,8 +660,8 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
 
   // --- Layer 2 Sub & Event Architecture ---
   const subState = {
-    home: { count: 0, windowsUsed: 0 },
-    away: { count: 0, windowsUsed: 0 }
+    home: { count: 0, windowsUsed: 0, lastSubMinute: -99 },
+    away: { count: 0, windowsUsed: 0, lastSubMinute: -99 }
   };
 
   const matchSubsRecord = { home: [], away: [] };
@@ -972,6 +972,7 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
     return false;
   };
 
+  // 2. Update evaluateDynamicSub to enforce a spacing cooldown for tactical/fatigue changes:
   const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
     if (!team._subbedOutIds) team._subbedOutIds = new Set();
     if (!team._subbedInIds) team._subbedInIds = new Set();
@@ -986,11 +987,15 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
+    // True Emergencies (Injuries or Red Cards) - Bypass cooldowns entirely
     const emergencyCandidate = starters.find(p => p.isInjured === true || p.hasRedCard === true);
-    
+
+    // Routine Fatigue Subs - Require at least 12 minutes of separation between non-halftime windows
     const isPastHourMark = isHalftime || currentMinute >= 60;
+    const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 12);
+    
     const subThreshold = team.tactics?.subThreshold || 68;
-    const exhaustedCandidate = isPastHourMark ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null;
+    const exhaustedCandidate = (isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null;
 
     const candidate = emergencyCandidate || exhaustedCandidate;
     if (!candidate || team._subbedOutIds.has(candidate.id)) return;
@@ -1000,6 +1005,11 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
 
     team._subbedOutIds.add(candidate.id);
     team._subbedInIds.add(freshSub.id);
+
+    // Record the window minute if it's a non-halftime tactical sub
+    if (!isHalftime && !emergencyCandidate) {
+      subState[side].lastSubMinute = currentMinute;
+    }
 
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
