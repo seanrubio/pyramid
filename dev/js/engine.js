@@ -665,6 +665,12 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   };
 
   const matchSubsRecord = { home: [], away: [] };
+  // Local Sets scoped strictly to THIS specific 90-minute match
+  const homeSubbedOut = new Set();
+  const homeSubbedIn = new Set();
+  const awaySubbedOut = new Set();
+  const awaySubbedIn = new Set();
+  
   const matchEventsTimeline = [];
 
   const logMatchEvent = (side, type, minute, details) => {
