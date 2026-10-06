@@ -209,11 +209,29 @@ export function renderSquadView(container, ctx) {
 
       if (p.isInjured) {
         const weeks = p.injuryWeeksRemaining || 1;
-        conditionDisplay = `<span title="Injured: ${weeks} week(s) remaining" style="cursor: help;">INJ</span>`;
+        conditionDisplay = `
+          <span style="position: relative; display: inline-block; cursor: pointer; color: var(--red, #f85149);" 
+                onmouseover="this.querySelector('.custom-tooltip').style.visibility='visible'; this.querySelector('.custom-tooltip').style.opacity='1';" 
+                onmouseout="this.querySelector('.custom-tooltip').style.visibility='hidden'; this.querySelector('.custom-tooltip').style.opacity='0';">
+            INJ
+            <span class="custom-tooltip" style="visibility: hidden; opacity: 0; transition: opacity 0.2s; background: #161b22; color: #fff; text-align: center; border-radius: 4px; padding: 4px 8px; position: absolute; z-index: 10; bottom: 125%; left: 50%; transform: translateX(-50%); white-space: nowrap; border: 1px solid var(--border); font-size: 10px; font-family: sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              Injured: ${weeks} week(s) remaining
+            </span>
+          </span>
+        `;
         conditionColor = 'var(--red, #f85149)';
       } else if (p.isSuspended) {
         const matches = p.suspensionMatchesRemaining || 1;
-        conditionDisplay = `<span title="Suspended: ${matches} match(es) remaining" style="cursor: help;">SUS</span>`;
+        conditionDisplay = `
+          <span style="position: relative; display: inline-block; cursor: pointer; color: #e3b341;" 
+                onmouseover="this.querySelector('.custom-tooltip').style.visibility='visible'; this.querySelector('.custom-tooltip').style.opacity='1';" 
+                onmouseout="this.querySelector('.custom-tooltip').style.visibility='hidden'; this.querySelector('.custom-tooltip').style.opacity='0';">
+            SUS
+            <span class="custom-tooltip" style="visibility: hidden; opacity: 0; transition: opacity 0.2s; background: #161b22; color: #fff; text-align: center; border-radius: 4px; padding: 4px 8px; position: absolute; z-index: 10; bottom: 125%; left: 50%; transform: translateX(-50%); white-space: nowrap; border: 1px solid var(--border); font-size: 10px; font-family: sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+              Suspended: ${matches} match(es) remaining
+            </span>
+          </span>
+        `;
         conditionColor = '#e3b341';
       }
 
