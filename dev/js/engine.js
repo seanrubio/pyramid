@@ -1005,6 +1005,26 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
 
+  const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
+    const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
+    const pressStyle = team.tactics?.press || 'mid block';
+    let pressMultiplier = pressStyle === 'gegenpress' ? 1.3 : (pressStyle === 'high press' ? 1.1 : 0.9);
+
+    starters.forEach(p => {
+      if (p.condition === undefined) p.condition = 95;
+      const bio = p.attributes?.bioenergetics || 70;
+      const bioFactor = Math.max(0.7, 1.3 - (bio / 100));
+      const decay = 0.35 * pressMultiplier * bioFactor;
+      p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
+
+      // Injury check based on exhaustion/fatigue
+      if (!p.isInjured && p.condition < 35 && Math.random() < 0.003) {
+        p.isInjured = true;
+        logMatchEvent(side, 'injury', currentMinute, { player: p.name });
+      }
+    });
+  };
+
   const halftimeTick = Math.round(maxPossessions / 2);
 
   let homeRemaining = hTotalPossessions;
