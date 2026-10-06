@@ -967,8 +967,9 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
         }
       }
 
-      freshSub.slot = candidate.slot;
-      candidate.slot = null;
+      // REMOVED: Re-assigning .slot permanently during match simulation!
+      // freshSub.slot = candidate.slot;
+      // candidate.slot = null;
 
       matchSubsRecord[side].push({ outgoingId: candidate.id, incomingId: freshSub.id, minute });
       logMatchEvent(side, 'substitution', minute, { out: candidate.name, in: freshSub.name });
