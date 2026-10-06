@@ -989,11 +989,14 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
-    // True Emergency: Only injuries (or a catastrophic GK absence) require a forced substitution. 
-    // Red cards are disciplinary; the player is dismissed, but no sub is forced.
-    const emergencyCandidate = starters.find(p => p.isInjured === true || (p.isGK && (!units.gk || units.gk.id !== p.id)));
+    // HARD GATE: Absolutely NO non-halftime substitutions of any kind allowed before minute 5 
+    // (prevents opening-whistle glitch swaps)
+    if (!isHalftime && currentMinute < 5) return;
+
+    // 1. True Emergency: ONLY a confirmed active injury (No premature GK panic swaps)
+    const emergencyCandidate = (currentMinute >= 5) ? starters.find(p => p.isInjured === true) : null;
     
-    // Routine & Tactical Subs
+    // 2. Routine & Tactical Subs (Strictly past hour mark or halftime)
     const isPastHourMark = isHalftime || currentMinute >= 60;
     const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 12);
     
