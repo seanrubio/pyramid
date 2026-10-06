@@ -971,7 +971,9 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
     const currentMinute = Math.round((tick / maxTicks) * 90);
     const starters = team.squad.filter(p => (p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id));
-    const bench = (team.squad || []).filter(p => (p.slot && p.slot.startsWith('B')) || (!p.slot && p !== units.gk));
+    
+    // FIX: Only pick players explicitly sitting on the bench slots (B1, B2, etc.)
+    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B'));
     if (!bench.length) return;
 
     if (subState[side].count >= 5) return;
@@ -991,7 +993,6 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
 
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
-
   const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
     const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
     const pressStyle = team.tactics?.press || 'mid block';
