@@ -915,13 +915,12 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id && p.slotRole === outgoingPlayer.slotRole);
     }
 
-    // Ultimate fallback must also explicitly exclude the outgoing player
     if (subIndex === -1) {
       subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id);
     }
 
     if (subIndex !== -1) {
-      return bench.splice(subIndex, 1)[0];
+      return bench[subIndex];
     }
     return null;
   };
@@ -930,7 +929,6 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     if (subState[side].count >= 5) return false;
     if (!isHalftimeWindow && subState[side].windowsUsed >= 3) return false;
     
-    // Safety: Never allow a player to sub for themselves
     if (!candidate || !freshSub || candidate.id === freshSub.id) return false;
 
     let targetList = null;
@@ -957,7 +955,6 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
         }
       }
 
-      // Preserve slot assignment and clear outgoing slot
       freshSub.slot = candidate.slot;
       candidate.slot = null;
 
@@ -975,23 +972,22 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     return false;
   };
 
- const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
+  const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
     if (!team._subbedOutIds) team._subbedOutIds = new Set();
+    if (!team._subbedInIds) team._subbedInIds = new Set();
 
     const currentMinute = Math.round((tick / maxTicks) * 90);
 
     const starters = team.squad.filter(p => ((p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id)) && !team._subbedOutIds.has(p.id));
     
-    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !team._subbedOutIds.has(p.id));
+    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !team._subbedOutIds.has(p.id) && !team._subbedInIds.has(p.id));
     if (!bench.length) return;
 
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
-    // 1. True Emergencies (Injuries, Red Cards, GK disasters) - CAN happen anytime
-    const emergencyCandidate = starters.find(p => p.isInjured || p.hasRedCard || (p.isGK && (!units.gk || units.gk.id !== p.id)));
+    const emergencyCandidate = starters.find(p => p.isInjured === true || p.hasRedCard === true);
     
-    // 2. Routine Fatigue Subs - BLOCKED before minute 60 unless it's halftime
     const isPastHourMark = isHalftime || currentMinute >= 60;
     const subThreshold = team.tactics?.subThreshold || 68;
     const exhaustedCandidate = isPastHourMark ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null;
@@ -1000,9 +996,11 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     if (!candidate || team._subbedOutIds.has(candidate.id)) return;
 
     const freshSub = findArchetypeSmartSub(bench, candidate, teamScore, oppScore, tick, maxTicks);
-    if (!freshSub) return;
+    if (!freshSub || team._subbedInIds.has(freshSub.id)) return;
 
     team._subbedOutIds.add(candidate.id);
+    team._subbedInIds.add(freshSub.id);
+
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
 
@@ -1018,14 +1016,12 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       const decay = 0.35 * pressMultiplier * bioFactor;
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
 
-      // Injury check based on exhaustion/fatigue
       if (!p.isInjured && p.condition < 35 && Math.random() < 0.003) {
         p.isInjured = true;
         logMatchEvent(side, 'injury', currentMinute, { player: p.name });
       }
     });
   };
-
   const halftimeTick = Math.round(maxPossessions / 2);
 
   let homeRemaining = hTotalPossessions;
