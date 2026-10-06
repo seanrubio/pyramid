@@ -125,44 +125,82 @@ export function renderMatchView(container, ctx) {
 
   const renderPostMatchSection = () => {
     const rep = targetFixture.report;
-    const timeline = targetFixture.matchEventsTimeline || [];
+    const rawTimeline = targetFixture.matchEventsTimeline || [];
 
-    const timelineHtml = timeline.length > 0 ? `
-      <div class="panel" style="padding: 12px; margin-bottom: 16px; background: rgba(0,0,0,0.15);">
-        <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+    // Pre-process timeline to nest assists inside goals
+    const processedEvents = [];
+    const assistsMap = {};
+    rawTimeline.forEach(ev => {
+      if (ev.type === 'assist') {
+        assistsMap[ev.minute + '_' + ev.scorer] = ev.assister;
+      }
+    });
+
+    rawTimeline.forEach(ev => {
+      if (ev.type === 'assist') return; // handled via goal nesting
+      let assistName = null;
+      if (ev.type === 'goal') {
+        assistName = assistsMap[ev.minute + '_' + ev.scorer] || null;
+      }
+      processedEvents.push({ ...ev, assistName });
+    });
+
+    const timelineHtml = processedEvents.length > 0 ? `
+      <div class="panel" style="padding: 16px; margin-bottom: 16px; background: rgba(0,0,0,0.2);">
+        <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; text-align: center;">
           MATCH TIMELINE
         </div>
-        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;">
-          ${[...timeline].sort((a, b) => a.minute - b.minute).map(ev => {
+        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 260px; overflow-y: auto; padding-right: 4px;">
+          ${[...processedEvents].sort((a, b) => a.minute - b.minute).map(ev => {
+            const isHomeEv = (ev.side === 'home');
             let icon = '•';
-            let desc = '';
-            const sideName = ev.side === 'home' ? homeTeam.name : awayTeam.name;
+            let title = '';
+            let subtext = '';
 
             if (ev.type === 'goal') {
               icon = '⚽';
-              desc = `Goal! ${ev.scorer} (${sideName})`;
-            } else if (ev.type === 'assist') {
-              icon = '👟';
-              desc = `Assist by ${ev.assister} for${ev.scorer}`;
+              title = ev.scorer;
+              if (ev.assistName) subtext = `Assist by ${ev.assistName}`;
             } else if (ev.type === 'yellow_card') {
               icon = '🟨';
-              desc = `Yellow Card: ${ev.player} (${sideName})`;
+              title = ev.player;
+              subtext = 'Yellow Card';
             } else if (ev.type === 'red_card') {
               icon = '🟥';
-              desc = `Red Card: ${ev.player} (${sideName})`;
+              title = ev.player;
+              subtext = 'Red Card';
             } else if (ev.type === 'injury') {
               icon = '🏥';
-              desc = `Injury: ${ev.player} (${sideName}) picked up a knock`;
+              title = ev.player;
+              subtext = 'Injury';
             } else if (ev.type === 'substitution') {
               icon = '🔄';
-              desc = `Sub (${sideName}): In ${ev.in} for${ev.out}`;
+              title = `<span style="color: var(--green, #3fb950);">${ev.in}</span>`;
+              subtext = `<span style="color: var(--red, #f85149);">${ev.out}</span>`;
             }
 
-            return `
-              <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-family: monospace;">
-                <span style="color: var(--text-muted); font-weight: 700; min-width: 24px;">${ev.minute}'</span>
+            const badgeHtml = `
+              <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 6px 10px; border-radius: 4px;">
                 <span style="font-size: 13px;">${icon}</span>
-                <span style="color: #fff; flex: 1;">${desc}</span>
+                <div style="display: flex; flex-direction: column; line-height: 1.2;">
+                  <span style="color: #fff; font-weight: 600; font-size: 12px;">${title}</span>${subtext ? `<span style="color: var(--text-muted); font-size: 10px; font-family: monospace;">${subtext}</span>` : ''}
+                </div>
+              </div>
+            `;
+
+            return `
+              <div style="display: grid; grid-template-columns: 1fr 48px 1fr; align-items: center; gap: 8px; font-size: 11px;">
+                <div style="text-align: right; display: flex; justify-content: flex-end;">
+                  ${isHomeEv ? badgeHtml : ''}
+                </div>
+                <div style="text-align: center;">
+                  <span style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #161b22; border: 1px solid var(--border); color: #fff; font-family: monospace; font-weight: 700; font-size: 12px;">
+                    ${ev.minute}'
+                  </span>
+                </div>
+                <div style="text-align: left; display: flex; justify-content: flex-start;">
+                  {!isHomeEv ? badgeHtml : ''}
+                </div>
               </div>
             `;
           }).join('')}
@@ -304,7 +342,7 @@ export function renderMatchView(container, ctx) {
     <div class="panel" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; margin-bottom: 16px;">
       <div style="display: flex; align-items: center; gap: 8px;">
         <button onclick="changeMatchRound(-1)" style="padding: 2px 10px;" ${currentNavIdx <= 0 ? 'disabled' : ''}>&lt;</button>
-        <strong style="color: #fff; font-size: 13px;">MATCH ${currentNavIdx + 1} OF ${clubMatches.length} <span style="color: var(--text-muted); font-size: 11px; margin-left: 4px;">(W${currentItem.week}.M${currentItem.moment})</span></strong>
+        <strong style="color: #fff; font-size: 13px;">MATCH ${currentNavIdx + 1} <span style="color: var(--text-muted); font-size: 11px; margin-left: 4px;"></span></strong>
         <button onclick="changeMatchRound(1)" style="padding: 2px 10px;" ${currentNavIdx >= clubMatches.length - 1 ? 'disabled' : ''}>&gt;</button>
       </div>
 
