@@ -902,25 +902,21 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       subIndex = bench.findIndex(p => p.isGK);
       if (subIndex === -1 && bench.length > 0) {
         subIndex = bench.findIndex(p => !p.isGK && (p.archetypeKey === 'target' || p.archetypeKey === 'soldier' || p.archetypeKey === 'steady_eddy'));
-        if (subIndex === -1) {
-          subIndex = bench.findIndex(p => !p.isGK);
-        }
-        if (subIndex !== -1) {
-          bench[subIndex].isEmergencyGK = true;
-        }
+        if (subIndex === -1) subIndex = bench.findIndex(p => !p.isGK);
+        if (subIndex !== -1) bench[subIndex].isEmergencyGK = true;
       }
     } else if (isChasingGoal && (outgoingPlayer.archetypeKey === 'soldier' || outgoingPlayer.archetypeKey === 'steady_eddy')) {
-      subIndex = bench.findIndex(p => !p.isGK && ['artist', 'dribblinho', 'pocket_player', 'runner_in_behind'].includes(p.archetypeKey));
+      subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id && ['artist', 'dribblinho', 'pocket_player', 'runner_in_behind'].includes(p.archetypeKey));
     } else if (isWinningLate && ['dribblinho', 'artist', 'pocket_player'].includes(outgoingPlayer.archetypeKey)) {
-      subIndex = bench.findIndex(p => !p.isGK && ['two_way', 'soldier', 'disrupter'].includes(p.archetypeKey));
+      subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id && ['two_way', 'soldier', 'disrupter'].includes(p.archetypeKey));
     }
 
     if (subIndex === -1) {
-      subIndex = bench.findIndex(p => !p.isGK && p.slotRole === outgoingPlayer.slotRole);
+      subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id && p.slotRole === outgoingPlayer.slotRole);
     }
 
     if (subIndex === -1) {
-      subIndex = bench.findIndex(p => !p.isGK);
+      subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id);
     }
 
     if (subIndex !== -1) {
@@ -978,42 +974,22 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     const bench = (team.squad || []).filter(p => (p.slot && p.slot.startsWith('B')) || (!p.slot && p !== units.gk));
     if (!bench.length) return;
 
-    let subsMadeThisPass = 0;
-    const maxSubsPerPass = isHalftime ? 3 : 1; 
+    if (subState[side].count >= 5) return;
+    if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
-    while (subsMadeThisPass < maxSubsPerPass) {
-      if (subState[side].count >= 5 || (!isHalftime && subState[side].windowsUsed >= 3)) break;
+    const emergencyCandidate = starters.find(p => p.isInjured || p.hasRedCard || (p.isGK && (!units.gk || units.gk.id !== p.id)));
+    
+    if (!isHalftime && !emergencyCandidate && tick < Math.round(maxTicks * 0.35)) return;
 
-      const emergencyCandidate = starters.find(p => p.isInjured || p.hasRedCard || (p.isGK && (!units.gk || units.gk.id !== p.id)));
-      if (emergencyCandidate) {
-        const freshSub = findArchetypeSmartSub(bench, emergencyCandidate, teamScore, oppScore, tick, maxTicks);
-        if (freshSub) {
-          const success = executeSubstitution(team, units, side, emergencyCandidate, freshSub, currentMinute, maxTicks, isHalftime);
-          if (success) {
-            subsMadeThisPass++;
-            continue;
-          }
-        }
-      }
+    const subThreshold = team.tactics?.subThreshold || 68;
+    const candidate = emergencyCandidate || starters.find(p => p.condition <= subThreshold && !p.isInjured);
+    
+    if (!candidate) return;
 
-      if (!isHalftime && tick < Math.round(maxTicks * 0.35)) break;
+    const freshSub = findArchetypeSmartSub(bench, candidate, teamScore, oppScore, tick, maxTicks);
+    if (!freshSub) return;
 
-      const subThreshold = team.tactics?.subThreshold || 68;
-      const exhaustedCandidate = starters.find(p => p.condition <= subThreshold && !p.isInjured);
-      if (!exhaustedCandidate) break;
-
-      const freshSub = findArchetypeSmartSub(bench, exhaustedCandidate, teamScore, oppScore, tick, maxTicks);
-      if (freshSub) {
-        const success = executeSubstitution(team, units, side, exhaustedCandidate, freshSub, currentMinute, maxTicks, isHalftime);
-        if (success) {
-          subsMadeThisPass++;
-        } else {
-          break;
-        }
-      } else {
-        break;
-      }
-    }
+    executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
 
   const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
