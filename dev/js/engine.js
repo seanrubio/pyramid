@@ -306,14 +306,15 @@ export function validateLineup(team) {
   const hasGk = starters.some(p => p.isGK);
   if (!hasGk) return { valid: false, error: 'No goalkeeper assigned in starting XI.' };
   
-  const invalidStarters = starters.filter(p => p.isInjured || p.isSuspended);
-  if (invalidStarters.length > 0) {
-    return { valid: false, error: `Lineup contains unavailable players (Injured/Suspended).` };
+  // ---> ENFORCE SUSPENSION & INJURY BLOCK HERE:
+  const unauthorizedPlayers = starters.filter(p => p.isInjured || p.isSuspended || p.hasRedCard);
+  if (unauthorizedPlayers.length > 0) {
+    const names = unauthorizedPlayers.map(p => p.name).join(', ');
+    return { valid: false, error: `Cannot field unavailable players: ${names}` };
   }
 
   return { valid: true };
 }
-
 export function buildRoundRobin(teamIds) {
   let pool = [...teamIds];
   const hasGhost = (pool.length % 2 !== 0);
@@ -620,6 +621,13 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     awayPlayers: {}
   };
 
+  // Reset match-day red card flags from previous fixtures
+  [homeTeam, awayTeam].forEach(team => {
+    (team.squad || []).forEach(p => {
+      p.hasRedCard = false;
+    });
+  });
+
   const initReportPlayer = (side, player, slotRole, defaultMins = 90) => {
     if (!player) return;
     const bucket = side === 'home' ? report.homePlayers : report.awayPlayers;
@@ -808,6 +816,11 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
             defender.isSuspended = true;
             defender.suspensionMatchesRemaining = 1;
             logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
+            // ---> ADD THIS: Freeze their match report minutes right at dismissal
+            const oppBucket = (oppSideKey === 'home') ? report.homePlayers : report.awayPlayers;
+            if (oppBucket[defender.id]) {
+              oppBucket[defender.id].minutes = currentMinute;
+            }
           }
         }
       } else {
