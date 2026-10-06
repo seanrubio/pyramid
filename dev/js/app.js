@@ -174,7 +174,7 @@ export function handleSimRound() {
     }
   }
 
-  if (advanceMomentSimulation(context.state)) {
+  if (advanceMomentSimulation(context.state, context.DB)) {
     if (userFixture && userFixture.played) {
       context.viewedMatchRound = prevW;
       context.viewedMatchMoment = prevM;
