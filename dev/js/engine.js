@@ -1159,6 +1159,20 @@ export function updateTableRecord(tables, groupKey, teamId, gf, ga, xg, xga) {
   if (row.form.length > 5) row.form.shift();
 }
 
+export function applyRestRecovery(state) {
+  Object.values(state.teams).forEach(team => {
+    (team.squad || []).forEach(p => {
+      if (p.isInjured) return; // Injured players recover via injury timeline
+      if (p.condition === undefined) p.condition = 90;
+      
+      const bio = p.attributes?.bioenergetics || 70;
+      // Recovery rate scales with bioenergetics (roughly 3% to 6% recovery per non-match tick)
+      const recovery = 2.5 + (bio / 30);
+      p.condition = Math.min(100, parseFloat((p.condition + recovery).toFixed(2)));
+    });
+  });
+}
+
 export function advanceMomentSimulation(state) {
   if (state.week > 52) {
     alert("Season complete! Start a new season to proceed.");
