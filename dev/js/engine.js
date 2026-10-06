@@ -253,14 +253,18 @@ export function autoAssignLineup(DB, team) {
   const bpKey = team.tactics ? team.tactics.blueprint : null;
   const bp = (bpKey && DB.tacticalBlueprints) ? DB.tacticalBlueprints[bpKey] : null;
 
-  // Filter out injured or suspended players from auto-assignment
-  const availablePlayers = team.squad.filter(p => !p.isInjured && !p.isSuspended);
+  // Exclude injured, suspended, or severely fatigued players (condition < 50) unless desperate
+  let availablePlayers = team.squad.filter(p => !p.isInjured && !p.isSuspended && !p.hasRedCard && p.condition >= 50);
+  if (availablePlayers.length < 15) {
+    // Fallback if squad is deeply depleted
+    availablePlayers = team.squad.filter(p => !p.isInjured && !p.isSuspended && !p.hasRedCard);
+  }
 
   const availableKeepers = availablePlayers.filter(p => p.isGK);
   if (availableKeepers.length > 0) {
     availableKeepers.sort((a, b) => {
-      let scoreA = (a.attributes.dynamicPower * 0.4) + (a.attributes.processing * 0.4) + (a.attributes.scanning * 0.2);
-      let scoreB = (b.attributes.dynamicPower * 0.4) + (b.attributes.processing * 0.4) + (b.attributes.scanning * 0.2);
+      let scoreA = (a.attributes.dynamicPower * 0.4) + (a.attributes.processing * 0.4) + (a.attributes.scanning * 0.2) + (a.condition * 0.1);
+      let scoreB = (b.attributes.dynamicPower * 0.4) + (b.attributes.processing * 0.4) + (b.attributes.scanning * 0.2) + (b.condition * 0.1);
       if (bp && bp.favoredGk) {
         if (a.archetypeKey === bp.favoredGk) scoreA += 8.0;
         if (b.archetypeKey === bp.favoredGk) scoreB += 8.0;
@@ -279,7 +283,12 @@ export function autoAssignLineup(DB, team) {
 
   for (const slot of outfieldSlots) {
     if (availableOutfield.length === 0) break;
-    availableOutfield.sort((a, b) => evaluateSlotFit(DB, b, slot.role, bpKey) - evaluateSlotFit(DB, a, slot.role, bpKey));
+    // Factor condition into AI fit scoring so rested players get rotated in
+    availableOutfield.sort((a, b) => {
+      const fitB = evaluateSlotFit(DB, b, slot.role, bpKey) + (b.condition * 0.05);
+      const fitA = evaluateSlotFit(DB, a, slot.role, bpKey) + (a.condition * 0.05);
+      return fitB - fitA;
+    });
     const chosen = availableOutfield.shift();
     chosen.slot = slot.slotCode;
   }
@@ -290,8 +299,8 @@ export function autoAssignLineup(DB, team) {
 
   const remainingOutfield = availablePlayers.filter(p => !p.isGK && !p.slot);
   remainingOutfield.sort((a, b) => {
-    const scoreA = (a.attributes.bioenergetics * 0.4) + (a.attributes.grit * 0.3) + (a.attributes.stewardship * 0.3);
-    const scoreB = (b.attributes.bioenergetics * 0.4) + (b.attributes.grit * 0.3) + (b.attributes.stewardship * 0.3);
+    const scoreA = (a.attributes.bioenergetics * 0.4) + (a.condition * 0.3);
+    const scoreB = (b.attributes.bioenergetics * 0.4) + (b.condition * 0.3);
     return scoreB - scoreA;
   });
 
@@ -810,7 +819,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
         }
 
         const regulation = defender.attributes.regulation || 50;
-        if (!defender.hasRedCard && Math.random() < (0.04 + (100 - regulation) * 0.001)) {
+        if (!defender.hasRedCard && Math.random() < (0.015 + (100 - regulation) * 0.001)) {
           if (!defender.hasYellowCard) {
             defender.hasYellowCard = true;
             logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
@@ -1176,6 +1185,10 @@ export function advanceMomentSimulation(state) {
       const awayTeam = state.teams[fix.away];
       if (!homeTeam || !awayTeam) return;
 
+      // ---> Automatically rotate/refresh AI lineups before kickoff
+      if (!homeTeam.isUser) autoAssignLineup(state.DB, homeTeam);
+      if (!awayTeam.isUser) autoAssignLineup(state.DB, awayTeam);
+
       const simRes = simulateSingleFixture(homeTeam, awayTeam, fix.comp || slot.comp);
       fix.hg = simRes.hg;
       fix.ag = simRes.ag;
@@ -1218,6 +1231,8 @@ export function advanceMomentSimulation(state) {
       advanceUniversalCupNextRound(state, slot.cupRoundIndex);
     }
   }
+
+applyRestRecovery(state);
 
   if (state.moment < 4) {
     state.moment++;
