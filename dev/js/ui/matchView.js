@@ -156,7 +156,7 @@ export function renderMatchView(container, ctx) {
         <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; text-align: center;">
           MATCH TIMELINE
         </div>
-        <div style="display: flex; flex-direction: column; gap: 12px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
+        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
           ${[...processedEvents].sort((a, b) => a.minute - b.minute).map(ev => {
             const isHomeEv = (ev.side === 'home');
             let icon = '•';
@@ -166,7 +166,7 @@ export function renderMatchView(container, ctx) {
             if (ev.type === 'goal') {
               icon = '⚽';
               title = shortName(ev.scorer);
-              if (ev.assistName) subtext = `(${shortName(ev.assistName)})`;
+              if (ev.assistName) subtext = `${shortName(ev.assistName)}`;
             } else if (ev.type === 'yellow_card') {
               icon = '🟨';
               title = shortName(ev.player);
@@ -180,7 +180,7 @@ export function renderMatchView(container, ctx) {
             } else if (ev.type === 'substitution') {
               icon = '🔄';
               title = shortName(ev.in);
-              subtext = `(${shortName(ev.out)})`;
+              subtext = shortName(ev.out);
             }
 
             const badgeHtml = (alignRight) => `
@@ -207,7 +207,7 @@ export function renderMatchView(container, ctx) {
                   ${isHomeEv ? badgeHtml(true) : ''}
                 </div>
                 <div style="text-align: center;">
-                  <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: #161b22; border: 1px solid var(--border); color: #fff; font-family: monospace; font-weight: 700; font-size: 11px;">
+                  <span style="font-family: monospace; font-weight: 700; font-size: 12px; color: var(--text-muted);">
                     ${ev.minute}'
                   </span>
                 </div>
