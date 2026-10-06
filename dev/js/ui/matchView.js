@@ -93,7 +93,7 @@ export function renderMatchView(container, ctx) {
   const formBadges = formList.map(res => {
     let color = 'var(--text-muted)';
     let bg = 'rgba(255, 255, 255, 0.05)';
-    if (res === 'W') { color = 'var(--green, #3fb950);'; bg = 'rgba(63, 185, 80, 0.15)'; }
+    if (res === 'W') { color = 'var(--green, #3fb950)'; bg = 'rgba(63, 185, 80, 0.15)'; }
     else if (res === 'D') { color = '#e3b341'; bg = 'rgba(227, 179, 65, 0.15)'; }
     else if (res === 'L') { color = 'var(--red, #f85149)'; bg = 'rgba(248, 81, 73, 0.15)'; }
     return `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; font-size: 11px; font-weight: 700; color: ${color}; background: ${bg};">${res}</span>`;
@@ -166,7 +166,7 @@ export function renderMatchView(container, ctx) {
             if (ev.type === 'goal') {
               icon = '⚽';
               title = shortName(ev.scorer);
-              if (ev.assistName) subtext = `assist by ${shortName(ev.assistName)}`;
+              if (ev.assistName) subtext = `(${shortName(ev.assistName)})`;
             } else if (ev.type === 'yellow_card') {
               icon = '🟨';
               title = shortName(ev.player);
@@ -179,16 +179,25 @@ export function renderMatchView(container, ctx) {
               subtext = 'Injury';
             } else if (ev.type === 'substitution') {
               icon = '🔄';
-              title = `<span style="color: var(--green, #3fb950);">${shortName(ev.in)}</span>`;
-              subtext = `<span style="color: var(--red, #f85149);">${shortName(ev.out)}</span>`;
+              title = shortName(ev.in);
+              subtext = `(${shortName(ev.out)})`;
             }
 
             const badgeHtml = (alignRight) => `
               <div style="display: flex; align-items: center; gap: 8px; justify-content: ${alignRight ? 'flex-end' : 'flex-start'}; text-align: ${alignRight ? 'right' : 'left'};">
-                <span style="font-size: 13px;">${icon}</span>
-                <div style="display: flex; flex-direction: column; line-height: 1.2;">
-                  <span style="color: #fff; font-weight: 600; font-size: 12px;">${title}</span>${subtext ? `<span style="color: var(--text-muted); font-size: 10px; font-family: monospace;">${subtext}</span>` : ''}
-                </div>
+                ${alignRight ? `
+                  <div style="display: flex; flex-direction: column; line-height: 1.2;">
+                    <span style="color: #fff; font-weight: 600; font-size: 12px;">${title}</span>
+                    ${subtext ? `<span style="color: var(--text-muted); font-size: 10px; font-family: monospace;">${subtext}</span>` : ''}
+                  </div>
+                  <span style="font-size: 13px;">${icon}</span>
+                ` : `
+                  <span style="font-size: 13px;">${icon}</span>
+                  <div style="display: flex; flex-direction: column; line-height: 1.2;">
+                    <span style="color: #fff; font-weight: 600; font-size: 12px;">${title}</span>
+                    ${subtext ? `<span style="color: var(--text-muted); font-size: 10px; font-family: monospace;">${subtext}</span>` : ''}
+                  </div>
+                `}
               </div>
             `;
 
@@ -203,7 +212,7 @@ export function renderMatchView(container, ctx) {
                   </span>
                 </div>
                 <div style="display: flex; justify-content: flex-start;">
-                  {!isHomeEv ? badgeHtml(false) : ''}
+                  ${!isHomeEv ? badgeHtml(false) : ''}
                 </div>
               </div>
             `;
