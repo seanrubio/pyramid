@@ -1,0 +1,49 @@
+(() => {
+  // 1. Pull the active state from window.context or localStorage fallback
+  const state = window.context?.state || JSON.parse(localStorage.getItem('apex_wpm_save_dev'));
+  if (!state) {
+    console.warn("No active game state found.");
+    return;
+  }
+
+  const userTeamId = state.userTeamId;
+  let recentMatch = null;
+
+  // 2. Scan backwards through the calendar to find the last played match for your user team
+  for (let w = state.week; w >= 1; w--) {
+    const weekSlots = state.calendar[w];
+    if (!weekSlots) continue;
+    
+    for (let m = 4; m >= 1; m--) {
+      const slot = weekSlots[m];
+      if (slot && slot.type === 'match' && slot.matches) {
+        const found = slot.matches.find(fix => fix.played && (fix.home === userTeamId || fix.away === userTeamId));
+        if (found) {
+          recentMatch = found;
+          break;
+        }
+      }
+    }
+    if (recentMatch) break;
+  }
+
+  if (!recentMatch) {
+    console.log("No recently played matches found for your team yet.");
+    return;
+  }
+
+  const homeName = state.teams[recentMatch.home]?.name || recentMatch.home;
+  const awayName = state.teams[recentMatch.away]?.name || recentMatch.away;
+
+  console.group(`%c[MATCH TIMELINE] ${homeName} ${recentMatch.hg} - ${recentMatch.ag} ${awayName}`, "color: #10B981; font-weight: bold; font-size: 14px;");
+  
+  if (recentMatch.matchEventsTimeline && recentMatch.matchEventsTimeline.length > 0) {
+    // Sort chronologically by minute
+    const sorted = [...recentMatch.matchEventsTimeline].sort((a, b) => a.minute - b.minute);
+    console.table(sorted);
+  } else {
+    console.log("%cNo timed events found on this match object. (Did you simulate before updating engine.js?)", "color: #F59E0B;");
+  }
+  
+  console.groupEnd();
+})();
