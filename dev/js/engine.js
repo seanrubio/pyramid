@@ -1173,7 +1173,7 @@ export function applyRestRecovery(state) {
   });
 }
 
-export function advanceMomentSimulation(state) {
+export function advanceMomentSimulation(state, DB) {
   if (state.week > 52) {
     alert("Season complete! Start a new season to proceed.");
     return false;
@@ -1199,9 +1199,8 @@ export function advanceMomentSimulation(state) {
       const awayTeam = state.teams[fix.away];
       if (!homeTeam || !awayTeam) return;
 
-      // ---> Automatically rotate/refresh AI lineups before kickoff
-      if (!homeTeam.isUser) autoAssignLineup(state.DB, homeTeam);
-      if (!awayTeam.isUser) autoAssignLineup(state.DB, awayTeam);
+      if (!homeTeam.isUser) autoAssignLineup(DB, homeTeam);
+      if (!awayTeam.isUser) autoAssignLineup(DB, awayTeam);
 
       const simRes = simulateSingleFixture(homeTeam, awayTeam, fix.comp || slot.comp);
       fix.hg = simRes.hg;
