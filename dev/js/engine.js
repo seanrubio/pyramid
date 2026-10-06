@@ -989,23 +989,21 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
-    // 1. True Emergencies (Injuries or Red Cards) - Bypass timing rules completely
-    const emergencyCandidate = starters.find(p => p.isInjured === true || p.hasRedCard === true);
+    // True Emergency: Only injuries (or a catastrophic GK absence) require a forced substitution. 
+    // Red cards are disciplinary; the player is dismissed, but no sub is forced.
+    const emergencyCandidate = starters.find(p => p.isInjured === true || (p.isGK && (!units.gk || units.gk.id !== p.id)));
     
-    // 2. Routine & Tactical Subs
+    // Routine & Tactical Subs
     const isPastHourMark = isHalftime || currentMinute >= 60;
     const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 12);
     
     const subThreshold = team.tactics?.subThreshold || 68;
     
-    // Condition-based exhausted candidate
     let candidate = emergencyCandidate || ((isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null);
 
-    // Tactical Freshness Fallback: If no one is critically fatigued, managers still make 
-    // tactical adjustments past min 70 based on scoreline/fresh legs if windows permit
+    // Tactical Freshness Fallback (past min 70)
     if (!candidate && isPastHourMark && canUseTacticalWindow && currentMinute >= 70 && Math.random() < 0.35) {
-      // Pick a non-injured starter with the lowest condition to inject tactical energy
-      const eligibleStarters = starters.filter(p => !p.isInjured).sort((a, b) => a.condition - b.condition);
+      const eligibleStarters = starters.filter(p => !p.isInjured && !p.hasRedCard).sort((a, b) => a.condition - b.condition);
       if (eligibleStarters.length > 0) {
         candidate = eligibleStarters[0];
       }
