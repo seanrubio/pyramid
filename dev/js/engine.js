@@ -892,7 +892,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     }
   };
 
-  const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick, maxTicks) => {
+const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick, maxTicks) => {
     const isWinningLate = (tick >= Math.round(maxTicks * 0.75)) && (teamScore > oppScore);
     const isChasingGoal = (tick >= Math.round(maxTicks * 0.65)) && (teamScore < oppScore);
 
@@ -1022,6 +1022,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       }
     });
   };
+  
   const halftimeTick = Math.round(maxPossessions / 2);
 
   let homeRemaining = hTotalPossessions;
