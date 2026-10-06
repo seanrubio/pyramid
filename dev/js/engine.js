@@ -799,6 +799,8 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
             logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
           } else {
             defender.hasRedCard = true;
+            defender.isSuspended = true;
+            defender.suspensionMatchesRemaining = 1; // 1 match ban
             logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
           }
         }
@@ -1040,10 +1042,10 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
 
       if (!p.isInjured && p.condition < 35 && Math.random() < 0.003) {
-        p.isInjured = true;
-        logMatchEvent(side, 'injury', currentMinute, { player: p.name });
-      }
-    });
+          p.isInjured = true;
+          p.injuryWeeksRemaining = Math.floor(Math.random() * 3) + 1; // 1 to 3 weeks recovery
+          logMatchEvent(side, 'injury', currentMinute, { player: p.name });
+        }
   };
   
   const halftimeTick = Math.round(maxPossessions / 2);
@@ -1174,6 +1176,26 @@ export function advanceMomentSimulation(state) {
         updateTableRecord(state.regionalTables, fix.cupName, homeTeam.id, fix.hg, fix.ag, fix.hxg, fix.axg);
         updateTableRecord(state.regionalTables, fix.cupName, awayTeam.id, fix.ag, fix.hg, fix.axg, fix.hxg);
       }
+
+      // ---> PLACE IT HERE: Decrement injuries and suspensions for both participating teams after their match
+      [homeTeam, awayTeam].forEach(team => {
+        (team.squad || []).forEach(p => {
+          if (p.isInjured) {
+            p.injuryWeeksRemaining = (p.injuryWeeksRemaining || 1) - 1;
+            if (p.injuryWeeksRemaining <= 0) {
+              p.isInjured = false;
+              p.injuryWeeksRemaining = 0;
+            }
+          }
+          if (p.isSuspended) {
+            p.suspensionMatchesRemaining = (p.suspensionMatchesRemaining || 1) - 1;
+            if (p.suspensionMatchesRemaining <= 0) {
+              p.isSuspended = false;
+              p.suspensionMatchesRemaining = 0;
+            }
+          }
+        });
+      });
     });
 
     if (slot.comp === 'cup') {
