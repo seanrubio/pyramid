@@ -115,6 +115,14 @@ export function renderMatchView(container, ctx) {
     .sort((a, b) => calculatePillarAvg(b) - calculatePillarAvg(a))
     .slice(0, 3);
 
+  const renderStatLine = (label, hVal, aVal) => `
+    <div style="display: grid; grid-template-columns: 45px 1fr 45px; align-items: center; gap: 8px; font-size: 11px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+      <span style="font-family: monospace; font-weight: 700; text-align: left; color: ${hVal > aVal ? '#fff' : 'var(--text-muted)'};">${hVal}</span>
+      <span style="color: var(--text-muted); text-align: center; font-size: 10px; text-transform: uppercase;">${label}</span>
+      <span style="font-family: monospace; font-weight: 700; text-align: right; color: ${aVal > hVal ? '#fff' : 'var(--text-muted)'};">${aVal}</span>
+    </div>
+  `;
+
   const renderPostMatchSection = () => {
     const rep = targetFixture.report;
     const timeline = targetFixture.matchEventsTimeline || [];
@@ -215,7 +223,6 @@ export function renderMatchView(container, ctx) {
     `).join('');
 
     return `
-      <!-- Result Banner -->
       <div class="panel" style="padding: 16px; margin-bottom: 16px; text-align: center; background: rgba(0,0,0,0.25);">
         <div style="font-size: 10px; color: var(--text-muted); font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">
           FINAL RESULT
@@ -240,7 +247,6 @@ export function renderMatchView(container, ctx) {
 
       ${timelineHtml}
 
-      <!-- Match Breakdown: Comparison Bar on Left, Single Box Score on Right -->
       <div style="display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;">
         <div class="panel" style="padding: 12px;">
           <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
