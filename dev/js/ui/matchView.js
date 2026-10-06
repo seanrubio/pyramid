@@ -33,7 +33,6 @@ export function renderMatchView(container, ctx) {
 
   if (!ctx.matchReportSide) ctx.matchReportSide = 'home';
 
-  // 1. Compile the complete, ordered chronological match ledger for this club
   const clubMatches = getClubChronologicalMatches(calendar, activeTeamId, activeTeam.div);
 
   if (clubMatches.length === 0) {
@@ -45,11 +44,9 @@ export function renderMatchView(container, ctx) {
     return;
   }
 
-  // 2. Identify the active / upcoming match index
   let defaultIdx = clubMatches.findIndex(item => !item.played);
   if (defaultIdx === -1) defaultIdx = clubMatches.length - 1;
 
-  // If navigated via openMatchReport(homeTeamId, week, moment)
   if (ctx.viewedMatchRound !== null && (ctx.viewedMatchNavIndex === null || ctx.viewedMatchNavIndex === undefined)) {
     const foundIdx = clubMatches.findIndex(item => item.week === ctx.viewedMatchRound && (ctx.viewedMatchMoment === null || item.moment === ctx.viewedMatchMoment));
     if (foundIdx !== -1) ctx.viewedMatchNavIndex = foundIdx;
@@ -67,7 +64,6 @@ export function renderMatchView(container, ctx) {
   const oppId = isHome ? targetFixture.away : targetFixture.home;
   const oppTeam = isHome ? awayTeam : homeTeam;
 
-  // Opposition profile and standings for scouting
   const isRegional = (currentItem.comp === 'regional' && currentItem.fixture.cupName);
   const rawTable = isRegional
     ? (ctx.state.regionalTables?.[currentItem.fixture.cupName] || [])
@@ -119,9 +115,53 @@ export function renderMatchView(container, ctx) {
     .sort((a, b) => calculatePillarAvg(b) - calculatePillarAvg(a))
     .slice(0, 3);
 
-  // Full Post-Match Report Renderer
   const renderPostMatchSection = () => {
     const rep = targetFixture.report;
+    const timeline = targetFixture.matchEventsTimeline || [];
+
+    const timelineHtml = timeline.length > 0 ? `
+      <div class="panel" style="padding: 12px; margin-bottom: 16px; background: rgba(0,0,0,0.15);">
+        <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+          MATCH TIMELINE
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;">
+          ${[...timeline].sort((a, b) => a.minute - b.minute).map(ev => {
+            let icon = '•';
+            let desc = '';
+            const sideName = ev.side === 'home' ? homeTeam.name : awayTeam.name;
+
+            if (ev.type === 'goal') {
+              icon = '⚽';
+              desc = `Goal! ${ev.scorer} (${sideName})`;
+            } else if (ev.type === 'assist') {
+              icon = '👟';
+              desc = `Assist by ${ev.assister} for${ev.scorer}`;
+            } else if (ev.type === 'yellow_card') {
+              icon = '🟨';
+              desc = `Yellow Card: ${ev.player} (${sideName})`;
+            } else if (ev.type === 'red_card') {
+              icon = '🟥';
+              desc = `Red Card: ${ev.player} (${sideName})`;
+            } else if (ev.type === 'injury') {
+              icon = '🏥';
+              desc = `Injury: ${ev.player} (${sideName}) picked up a knock`;
+            } else if (ev.type === 'substitution') {
+              icon = '🔄';
+              desc = `Sub (${sideName}): In ${ev.in} for${ev.out}`;
+            }
+
+            return `
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-family: monospace;">
+                <span style="color: var(--text-muted); font-weight: 700; min-width: 24px;">${ev.minute}'</span>
+                <span style="font-size: 13px;">${icon}</span>
+                <span style="color: #fff; flex: 1;">${desc}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
+
     if (!rep) {
       return `
         <div class="panel" style="padding: 24px; text-align: center; margin-bottom: 16px;">
@@ -129,9 +169,10 @@ export function renderMatchView(container, ctx) {
           <div style="font-size: 32px; font-weight: 800; font-family: monospace; color: #fff; margin-bottom: 4px;">
             ${targetFixture.hg} – ${targetFixture.ag}
           </div>
-          <div style="font-size: 12px; color: var(--text-muted); font-family: monospace;">
+          <div style="font-size: 12px; color: var(--text-muted); font-family: monospace; margin-bottom: 12px;">
             xG: ${targetFixture.hxg.toFixed(1)} – ${targetFixture.axg.toFixed(1)}
           </div>
+          ${timelineHtml}
         </div>
       `;
     }
@@ -143,14 +184,6 @@ export function renderMatchView(container, ctx) {
     const aPoss = 100 - hPoss;
     const hCmp = hStats.passes > 0 ? Math.round((hStats.passesComp / hStats.passes) * 100) : 0;
     const aCmp = aStats.passes > 0 ? Math.round((aStats.passesComp / aStats.passes) * 100) : 0;
-
-    const renderStatLine = (label, hVal, aVal) => `
-      <div style="display: grid; grid-template-columns: 45px 1fr 45px; align-items: center; gap: 8px; font-size: 11px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
-        <span style="font-family: monospace; font-weight: 700; text-align: left; color: ${hVal > aVal ? '#fff' : 'var(--text-muted)'};">${hVal}</span>
-        <span style="color: var(--text-muted); text-align: center; font-size: 10px; text-transform: uppercase;">${label}</span>
-        <span style="font-family: monospace; font-weight: 700; text-align: right; color: ${aVal > hVal ? '#fff' : 'var(--text-muted)'};">${aVal}</span>
-      </div>
-    `;
 
     const getPosOrder = (p) => {
       if (p.slot && p.slot.startsWith('S')) return parseInt(p.slot.slice(1), 10);
@@ -204,6 +237,8 @@ export function renderMatchView(container, ctx) {
           ${targetFixture.hxg.toFixed(1)} xG &nbsp;—&nbsp; ${targetFixture.axg.toFixed(1)} xG
         </div>
       </div>
+
+      ${timelineHtml}
 
       <!-- Match Breakdown: Comparison Bar on Left, Single Box Score on Right -->
       <div style="display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;">
@@ -260,7 +295,6 @@ export function renderMatchView(container, ctx) {
   };
 
   container.innerHTML = `
-    <!-- Top Interactive Fixture Navigation Bar -->
     <div class="panel" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; margin-bottom: 16px;">
       <div style="display: flex; align-items: center; gap: 8px;">
         <button onclick="changeMatchRound(-1)" style="padding: 2px 10px;" ${currentNavIdx <= 0 ? 'disabled' : ''}>&lt;</button>
@@ -281,7 +315,6 @@ export function renderMatchView(container, ctx) {
       </div>
     </div>
 
-    <!-- Match Header Banner -->
     <div class="panel" style="padding: 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
       <div>
         <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px;">
@@ -301,7 +334,6 @@ export function renderMatchView(container, ctx) {
     </div>
 
     ${targetFixture.played ? renderPostMatchSection() : `
-      <!-- Complete Opposition Scouting Report -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         <div class="panel" style="padding: 16px;">
           <h3 style="margin-top: 0; font-size: 13px; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px;">
