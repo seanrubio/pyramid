@@ -978,41 +978,47 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
     return false;
   };
 
-  // 2. Update evaluateDynamicSub to enforce a spacing cooldown for tactical/fatigue changes:
-  const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
-    if (!team._subbedOutIds) team._subbedOutIds = new Set();
-    if (!team._subbedInIds) team._subbedInIds = new Set();
-
+  const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0, subbedOutIds, subbedInIds) => {
     const currentMinute = Math.round((tick / maxTicks) * 90);
 
-    const starters = team.squad.filter(p => ((p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id)) && !team._subbedOutIds.has(p.id));
+    const starters = team.squad.filter(p => ((p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id)) && !subbedOutIds.has(p.id));
     
-    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !team._subbedOutIds.has(p.id) && !team._subbedInIds.has(p.id));
+    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !subbedOutIds.has(p.id) && !subbedInIds.has(p.id));
     if (!bench.length) return;
 
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
-    // True Emergencies (Injuries or Red Cards) - Bypass cooldowns entirely
+    // 1. True Emergencies (Injuries or Red Cards) - Bypass timing rules completely
     const emergencyCandidate = starters.find(p => p.isInjured === true || p.hasRedCard === true);
-
-    // Routine Fatigue Subs - Require at least 12 minutes of separation between non-halftime windows
+    
+    // 2. Routine & Tactical Subs
     const isPastHourMark = isHalftime || currentMinute >= 60;
     const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 12);
     
     const subThreshold = team.tactics?.subThreshold || 68;
-    const exhaustedCandidate = (isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null;
+    
+    // Condition-based exhausted candidate
+    let candidate = emergencyCandidate || ((isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null);
 
-    const candidate = emergencyCandidate || exhaustedCandidate;
-    if (!candidate || team._subbedOutIds.has(candidate.id)) return;
+    // Tactical Freshness Fallback: If no one is critically fatigued, managers still make 
+    // tactical adjustments past min 70 based on scoreline/fresh legs if windows permit
+    if (!candidate && isPastHourMark && canUseTacticalWindow && currentMinute >= 70 && Math.random() < 0.35) {
+      // Pick a non-injured starter with the lowest condition to inject tactical energy
+      const eligibleStarters = starters.filter(p => !p.isInjured).sort((a, b) => a.condition - b.condition);
+      if (eligibleStarters.length > 0) {
+        candidate = eligibleStarters[0];
+      }
+    }
+
+    if (!candidate || subbedOutIds.has(candidate.id)) return;
 
     const freshSub = findArchetypeSmartSub(bench, candidate, teamScore, oppScore, tick, maxTicks);
-    if (!freshSub || team._subbedInIds.has(freshSub.id)) return;
+    if (!freshSub || subbedInIds.has(freshSub.id)) return;
 
-    team._subbedOutIds.add(candidate.id);
-    team._subbedInIds.add(freshSub.id);
+    subbedOutIds.add(candidate.id);
+    subbedInIds.add(freshSub.id);
 
-    // Record the window minute if it's a non-halftime tactical sub
     if (!isHalftime && !emergencyCandidate) {
       subState[side].lastSubMinute = currentMinute;
     }
