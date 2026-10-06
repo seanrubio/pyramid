@@ -874,19 +874,23 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   const applyConditionDecayAndCheckSubs = (team, units, side) => {
     const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
     const pressStyle = team.tactics?.press || 'mid block';
-    let pressMultiplier = pressStyle === 'gegenpress' ? 1.35 : (pressStyle === 'high press' ? 1.15 : 0.85);
+    let pressMultiplier = pressStyle === 'gegenpress' ? 1.3 : (pressStyle === 'high press' ? 1.1 : 0.9);
 
     starters.forEach(p => {
       if (p.condition === undefined) p.condition = 95;
       const bio = p.attributes?.bioenergetics || 70;
-      const bioFactor = Math.max(0.6, 1.4 - (bio / 100));
-      const decay = 0.08 * pressMultiplier * bioFactor;
+      
+      // Bio factor scales decay inversely: high bioenergetics reduces drain, low increases it
+      const bioFactor = Math.max(0.7, 1.3 - (bio / 100));
+      
+      // Calibrated base drain so total match drop spans ~15 (for elites) to ~30 (for the unfit)
+      const decay = 0.35 * pressMultiplier * bioFactor;
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
     });
 
     // Sub trigger when condition drops into the 60s or lower (~69 or below)
     const exhaustedStarters = starters.filter(p => p.condition <= 69);
-    if (exhaustedStarters.length > 0 && Math.random() < 0.25) {
+    if (exhaustedStarters.length > 0 && Math.random() < 0.30) {
       performSubs(team, units, side);
     }
   };
