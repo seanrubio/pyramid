@@ -975,10 +975,11 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     return false;
   };
 
-  const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
+ const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
     if (!team._subbedOutIds) team._subbedOutIds = new Set();
 
     const currentMinute = Math.round((tick / maxTicks) * 90);
+
     const starters = team.squad.filter(p => ((p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id)) && !team._subbedOutIds.has(p.id));
     
     const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !team._subbedOutIds.has(p.id));
@@ -987,13 +988,13 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
-    // 1. True Emergencies (Injuries, Red Cards, or catastrophic GK issues)
+    // 1. True Emergencies (Injuries, Red Cards, GK disasters) - CAN happen anytime
     const emergencyCandidate = starters.find(p => p.isInjured || p.hasRedCard || (p.isGK && (!units.gk || units.gk.id !== p.id)));
     
-    // 2. Routine Fatigue Subs (Strictly restricted to Halftime or past the 60th minute)
-    const isPastHourMark = currentMinute >= 60;
+    // 2. Routine Fatigue Subs - BLOCKED before minute 60 unless it's halftime
+    const isPastHourMark = isHalftime || currentMinute >= 60;
     const subThreshold = team.tactics?.subThreshold || 68;
-    const exhaustedCandidate = (!isHalftime && !isPastHourMark) ? null : starters.find(p => p.condition <= subThreshold && !p.isInjured);
+    const exhaustedCandidate = isPastHourMark ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null;
 
     const candidate = emergencyCandidate || exhaustedCandidate;
     if (!candidate || team._subbedOutIds.has(candidate.id)) return;
