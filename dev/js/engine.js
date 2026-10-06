@@ -899,10 +899,10 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     let subIndex = -1;
 
     if (outgoingPlayer.isGK) {
-      subIndex = bench.findIndex(p => p.isGK);
+      subIndex = bench.findIndex(p => p.isGK && p.id !== outgoingPlayer.id);
       if (subIndex === -1 && bench.length > 0) {
-        subIndex = bench.findIndex(p => !p.isGK && (p.archetypeKey === 'target' || p.archetypeKey === 'soldier' || p.archetypeKey === 'steady_eddy'));
-        if (subIndex === -1) subIndex = bench.findIndex(p => !p.isGK);
+        subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id && (p.archetypeKey === 'target' || p.archetypeKey === 'soldier' || p.archetypeKey === 'steady_eddy'));
+        if (subIndex === -1) subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id);
         if (subIndex !== -1) bench[subIndex].isEmergencyGK = true;
       }
     } else if (isChasingGoal && (outgoingPlayer.archetypeKey === 'soldier' || outgoingPlayer.archetypeKey === 'steady_eddy')) {
@@ -915,6 +915,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id && p.slotRole === outgoingPlayer.slotRole);
     }
 
+    // Ultimate fallback must also explicitly exclude the outgoing player
     if (subIndex === -1) {
       subIndex = bench.findIndex(p => !p.isGK && p.id !== outgoingPlayer.id);
     }
