@@ -56,11 +56,8 @@ export function getCountry(DB, code) {
   return DB.countries.find(c => c.code === code) || { code: 'GB-ENG', name: 'England', flag: '🇬🇧', region: 'anglo' };
 }
 
-// Helper for weighted random selection based on array position (earlier = heavier weight)
 function weightedChoice(arr) {
   if (!arr || arr.length === 0) return '';
-  
-  // Calculate weights using an inverse rank decay (index 0 is heaviest)
   const weights = arr.map((_, index) => 1 / (index + 2));
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   
@@ -76,10 +73,8 @@ function weightedChoice(arr) {
 
 export function generatePlayerName(DB, countryCode = 'US') {
   const pool = DB.namePools[countryCode] || DB.namePools['US'] || Object.values(DB.namePools)[0];
-  
   const first = weightedChoice(pool.first);
   const last = weightedChoice(pool.last);
-  
   return `${first} ${last}`;
 }
 
@@ -131,7 +126,6 @@ export function generatePlayer(DB, isGK, div, natCode = null, forcedArchetypeKey
   const liabilityCutoff = 1.25 * DB.tierConfig.archetypeSigma;
 
   for (const [pillar, weight] of Object.entries(archetype.weights)) {
-    // Apply talentDelta here cleanly during generation!
     const rawVal = (tierMean + talentDelta) + (weight * DB.tierConfig.archetypeSigma) + randomGaussian(0, DB.tierConfig.noiseSigma);
     const score = Math.max(1, Math.min(99, Math.round(rawVal)));
     attributes[pillar] = score;
@@ -186,20 +180,16 @@ export function createFullSquad(DB, team) {
   let favoredPool = BLUEPRINT_ARCHETYPE_MAP[style];
   if (!favoredPool && press === 'gegenpress') favoredPool = BLUEPRINT_ARCHETYPE_MAP['gegenpress'];
 
-  // 1. Generate 2 GKs (100% domestic)
   for (let i = 0; i < 2; i++) {
     squad.push(generatePlayer(DB, true, div, domesticNat));
   }
 
-  // 2. Generate 21 Outfield Players (100% domestic)
   for (let i = 0; i < 21; i++) {
     const archetypeKey = (favoredPool && Math.random() < 0.65) ? sampleChoice(favoredPool) : sampleChoice(OUTFIELD_ARCHETYPES);
-    
     let talentDelta = 0;
     if (i === 0 || i === 6) talentDelta = 3.5;
     else if (i >= 17) talentDelta = -2.5;
 
-    // Pass everything straight into generatePlayer!
     const player = generatePlayer(DB, false, div, domesticNat, archetypeKey, talentDelta);
     squad.push(player);
   }
@@ -660,8 +650,9 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     return p;
   };
 
-  const hPossessions = Math.round(48 * getPaceMod(homeTeam) * 1.02);
-  const aPossessions = Math.round(48 * getPaceMod(awayTeam));
+  const hTotalPossessions = Math.round(48 * getPaceMod(homeTeam) * 1.02);
+  const aTotalPossessions = Math.round(48 * getPaceMod(awayTeam));
+  const maxPossessions = Math.max(hTotalPossessions, aTotalPossessions);
 
   const resolveTeamPossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
     const sideKey = isHome ? 'home' : 'away';
@@ -880,16 +871,47 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     }
   };
 
-  const hPhase1 = Math.round(hPossessions * 0.70);
-  const aPhase1 = Math.round(aPossessions * 0.70);
-  for (let i = 0; i < hPhase1; i++) resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
-  for (let i = 0; i < aPhase1; i++) resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
+  const applyConditionDecayAndCheckSubs = (team, units, side) => {
+    const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
+    const pressStyle = team.tactics?.press || 'mid block';
+    let pressMultiplier = pressStyle === 'gegenpress' ? 1.35 : (pressStyle === 'high press' ? 1.15 : 0.85);
 
-  performSubs(homeTeam, hUnits, 'home');
-  performSubs(awayTeam, aUnits, 'away');
+    starters.forEach(p => {
+      if (p.condition === undefined) p.condition = 95;
+      const bio = p.attributes?.bioenergetics || 70;
+      const bioFactor = Math.max(0.6, 1.4 - (bio / 100));
+      const decay = 0.08 * pressMultiplier * bioFactor;
+      p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
+    });
 
-  for (let i = hPhase1; i < hPossessions; i++) resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
-  for (let i = aPhase1; i < aPossessions; i++) resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
+    // Sub trigger when condition drops into the 60s or lower (~69 or below)
+    const exhaustedStarters = starters.filter(p => p.condition <= 69);
+    if (exhaustedStarters.length > 0 && Math.random() < 0.25) {
+      performSubs(team, units, side);
+    }
+  };
+
+  let homeRemaining = hTotalPossessions;
+  let awayRemaining = aTotalPossessions;
+
+  for (let tick = 1; tick <= maxPossessions; tick++) {
+    // Periodic tactical sub check around halftime
+    if (tick === Math.round(maxPossessions / 2)) {
+      performSubs(homeTeam, hUnits, 'home');
+      performSubs(awayTeam, aUnits, 'away');
+    }
+
+    if (homeRemaining > 0) {
+      applyConditionDecayAndCheckSubs(homeTeam, hUnits, 'home');
+      resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
+      homeRemaining--;
+    }
+    if (awayRemaining > 0) {
+      applyConditionDecayAndCheckSubs(awayTeam, aUnits, 'away');
+      resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
+      awayRemaining--;
+    }
+  }
 
   if (aGoals === 0) {
     (homeTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => {
@@ -1073,42 +1095,34 @@ export function applyPlayerAgingAndProgression(player) {
   for (const [pillar, val] of Object.entries(player.attributes)) {
     let delta = 0;
 
-    // 1. PHYSICAL GROUP: dynamicPower, bioenergetics
     if (['dynamicPower', 'bioenergetics'].includes(pillar)) {
       if (age < 24) delta = randomGaussian(1.5, 0.4);
       else if (age >= 24 && age <= 29) delta = randomGaussian(0, 0.2);
       else {
         let decayRate = -1.5;
-        if (profile === 'physical_freak') decayRate = -0.5; // Exception
-        if (profile === 'early_peaker') decayRate = -2.5;   // Exception
+        if (profile === 'physical_freak') decayRate = -0.5;
+        if (profile === 'early_peaker') decayRate = -2.5;
         delta = randomGaussian(decayRate, 0.4);
       }
-    }
-    
-    // 2. COGNITIVE GROUP: scanning, processing, regulation
-    else if (['scanning', 'processing', 'regulation'].includes(pillar)) {
+    } else if (['scanning', 'processing', 'regulation'].includes(pillar)) {
       if (age < 32) {
         let growthRate = 1.0;
-        if (profile === 'late_bloomer') growthRate = 1.8;   // Exception
-        if (profile === 'early_peaker') growthRate = 0.2;   // Exception
-        if (profile === 'old_soul' && age < 23) growthRate = 2.0; // Exception
+        if (profile === 'late_bloomer') growthRate = 1.8;
+        if (profile === 'early_peaker') growthRate = 0.2;
+        if (profile === 'old_soul' && age < 23) growthRate = 2.0;
         delta = randomGaussian(growthRate, 0.3);
       } else {
-        delta = randomGaussian(0.2, 0.2); // Veteran plateau / minimal growth
+        delta = randomGaussian(0.2, 0.2);
       }
-    }
-
-    // 3. INDEPENDENT GROUP: proprioception, grit, stewardship
-    else {
+    } else {
       if (profile === 'hothead' && pillar === 'regulation') {
-        delta = randomGaussian(-1.2, 0.4); // Hothead penalty
+        delta = randomGaussian(-1.2, 0.4);
       } else {
         delta = randomGaussian(0.2, 0.3);
       }
     }
 
     let newScore = Math.round(val + delta);
-    // Enforce Potential Ability ceiling during growth phases
     if (player.potentialAbility && newScore > player.potentialAbility && delta > 0) {
       newScore = player.potentialAbility;
     }
@@ -1173,7 +1187,6 @@ export function resetSeasonClean(state) {
 
   Object.values(state.teams).forEach(t => {
     (t.squad || []).forEach(p => {
-      // Archive current season stats
       if (!p.archiveStats) p.archiveStats = {};
       p.archiveStats[state.season] = {
         age: p.age,
@@ -1183,10 +1196,8 @@ export function resetSeasonClean(state) {
         cup: { ...p.stats.cup }
       };
 
-      // Run annual aging and progression pass
       applyPlayerAgingAndProgression(p);
 
-      // Reset active season metrics
       p.minutesPlayed = 0;
       p.stats = {
         league: createDefaultPlayerStats(),
