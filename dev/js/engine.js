@@ -583,14 +583,18 @@ export function applyMatchMinutes(team, matchSubs = [], comp = 'league') {
     ensurePlayerStats(p);
     const st = getCompetitionPlayerStats(p, comp);
     st.apps++;
-    p.minutesPlayed += (subbedOutIds.has(p.id) ? 65 : 90);
+    const subRecord = matchSubs.find(s => s.outgoingId === p.id);
+    const playedMins = subRecord ? subRecord.minute : 90;
+    p.minutesPlayed += playedMins;
   });
 
   (team.squad || []).filter(p => subbedInIds.has(p.id)).forEach(sub => {
     ensurePlayerStats(sub);
     const st = getCompetitionPlayerStats(sub, comp);
     st.apps++;
-    sub.minutesPlayed += 25;
+    const subRecord = matchSubs.find(s => s.incomingId === sub.id);
+    const playedMins = subRecord ? (90 - subRecord.minute) : 25;
+    sub.minutesPlayed += playedMins;
   });
 }
 
@@ -654,7 +658,20 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   const aTotalPossessions = Math.round(48 * getPaceMod(awayTeam));
   const maxPossessions = Math.max(hTotalPossessions, aTotalPossessions);
 
-  const resolveTeamPossession = (attTeam, defTeam, attUnits, defUnits, isHome) => {
+  // --- Layer 2 Sub & Event Architecture ---
+  const subState = {
+    home: { count: 0, windowsUsed: 0 },
+    away: { count: 0, windowsUsed: 0 }
+  };
+
+  const matchSubsRecord = { home: [], away: [] };
+  const matchEventsTimeline = [];
+
+  const logMatchEvent = (side, type, minute, details) => {
+    matchEventsTimeline.push({ side, type, minute, ...details });
+  };
+
+  const resolveTeamPossession = (attTeam, defTeam, attUnits, defUnits, isHome, currentMinute) => {
     const sideKey = isHome ? 'home' : 'away';
     const oppSideKey = isHome ? 'away' : 'home';
 
@@ -767,6 +784,18 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
           report[oppSideKey + 'Stats'].tacklesWon++;
           recordPlayerAction(oppSideKey, defender, 'tacklesWon');
         }
+
+        // Card & Injury Check on Defensive Duels
+        const regulation = defender.attributes.regulation || 50;
+        if (!defender.hasRedCard && Math.random() < (0.04 + (100 - regulation) * 0.001)) {
+          if (!defender.hasYellowCard) {
+            defender.hasYellowCard = true;
+            logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
+          } else {
+            defender.hasRedCard = true;
+            logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
+          }
+        }
       } else {
         defStat.interceptions++;
       }
@@ -820,12 +849,30 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
 
       report[sideKey + 'Stats'].sot++;
       recordPlayerAction(sideKey, shooter, 'goals');
-      if (creator && Math.random() < 0.65) recordPlayerAction(sideKey, creator, 'assists');
-      else if (passer && passer.id !== shooter.id && Math.random() < 0.15) recordPlayerAction(sideKey, passer, 'assists');
+      
+      // Log Goal Event with Exact Minute
+      logMatchEvent(sideKey, 'goal', currentMinute, { scorer: shooter.name });
 
-      if (creatorStat && Math.random() < 0.65) creatorStat.assists += 1;
-      else if (passer && passer.id !== shooter.id && Math.random() < 0.15) {
+      let assisterPlayer = null;
+      if (creator && Math.random() < 0.65) {
+        recordPlayerAction(sideKey, creator, 'assists');
+        assisterPlayer = creator;
+      } else if (passer && passer.id !== shooter.id && Math.random() < 0.15) {
+        recordPlayerAction(sideKey, passer, 'assists');
+        assisterPlayer = passer;
+      }
+
+      if (creatorStat && Math.random() < 0.65) {
+        creatorStat.assists += 1;
+        assisterPlayer = creator;
+      } else if (passer && passer.id !== shooter.id && Math.random() < 0.15) {
         getCompetitionPlayerStats(passer, comp).assists += 1;
+        assisterPlayer = passer;
+      }
+
+      // Log Assist Event if an assister was credited
+      if (assisterPlayer) {
+        logMatchEvent(sideKey, 'assist', currentMinute, { assister: assisterPlayer.name, scorer: shooter.name });
       }
 
       if (isHome) hGoals += 1;
@@ -845,33 +892,131 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     }
   };
 
-  const matchSubsRecord = { home: [], away: [] };
-  const performSubs = (team, units, side) => {
-    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !p.isGK);
-    if (!bench.length) return;
-    const numSubs = Math.min(bench.length, 2);
+  const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick, maxTicks) => {
+    const isWinningLate = (tick >= Math.round(maxTicks * 0.75)) && (teamScore > oppScore);
+    const isChasingGoal = (tick >= Math.round(maxTicks * 0.65)) && (teamScore < oppScore);
 
-    for (let s = 0; s < numSubs; s++) {
-      const freshSub = bench[s];
-      let targetUnitList = units.midfielders.length > 2 ? units.midfielders : (units.defenders.length > 3 ? units.defenders : units.forwards);
-      let outgoing = null;
-      if (targetUnitList) {
-        const starterIdx = targetUnitList.findIndex(p => p.slot && p.slot.startsWith('S'));
-        if (starterIdx !== -1) {
-          outgoing = targetUnitList.splice(starterIdx, 1)[0];
-          targetUnitList.push(freshSub);
+    let subIndex = -1;
+
+    if (outgoingPlayer.isGK) {
+      subIndex = bench.findIndex(p => p.isGK);
+      if (subIndex === -1 && bench.length > 0) {
+        subIndex = bench.findIndex(p => !p.isGK && (p.archetypeKey === 'target' || p.archetypeKey === 'soldier' || p.archetypeKey === 'steady_eddy'));
+        if (subIndex === -1) {
+          subIndex = bench.findIndex(p => !p.isGK);
+        }
+        if (subIndex !== -1) {
+          bench[subIndex].isEmergencyGK = true;
         }
       }
-      if (outgoing) {
-        matchSubsRecord[side].push({ outgoingId: outgoing.id, incomingId: freshSub.id });
-        const bucket = side === 'home' ? report.homePlayers : report.awayPlayers;
-        if (bucket[outgoing.id]) bucket[outgoing.id].minutes = 65;
-        initReportPlayer(side, freshSub, 'SUB', 25);
+    } else if (isChasingGoal && (outgoingPlayer.archetypeKey === 'soldier' || outgoingPlayer.archetypeKey === 'steady_eddy')) {
+      subIndex = bench.findIndex(p => !p.isGK && ['artist', 'dribblinho', 'pocket_player', 'runner_in_behind'].includes(p.archetypeKey));
+    } else if (isWinningLate && ['dribblinho', 'artist', 'pocket_player'].includes(outgoingPlayer.archetypeKey)) {
+      subIndex = bench.findIndex(p => !p.isGK && ['two_way', 'soldier', 'disrupter'].includes(p.archetypeKey));
+    }
+
+    if (subIndex === -1) {
+      subIndex = bench.findIndex(p => !p.isGK && p.slotRole === outgoingPlayer.slotRole);
+    }
+
+    if (subIndex === -1) {
+      subIndex = bench.findIndex(p => !p.isGK);
+    }
+
+    if (subIndex !== -1) {
+      return bench.splice(subIndex, 1)[0];
+    }
+    return null;
+  };
+
+  const executeSubstitution = (team, units, side, candidate, freshSub, minute, maxTicks, isHalftimeWindow = false) => {
+    if (subState[side].count >= 5) return false;
+    if (!isHalftimeWindow && subState[side].windowsUsed >= 3) return false;
+
+    let targetList = null;
+    const isNowGK = candidate.isGK || freshSub.isEmergencyGK;
+    const unitKeys = isNowGK ? ['gk'] : ['midfielders', 'defenders', 'wideDefenders', 'defensiveMidfielders', 'wideAttackers', 'playmakers', 'forwards'];
+    
+    if (isNowGK) {
+      targetList = units.gk ? [units.gk] : null;
+      units.gk = freshSub;
+    } else {
+      for (const unitKey of unitKeys) {
+        if (units[unitKey]?.some(p => p.id === candidate.id)) {
+          targetList = units[unitKey];
+          break;
+        }
+      }
+    }
+
+    if (targetList || isNowGK) {
+      if (!isNowGK && targetList) {
+        const idx = targetList.findIndex(p => p.id === candidate.id);
+        if (idx !== -1) targetList[idx] = freshSub;
+      }
+
+      freshSub.slot = candidate.slot;
+      candidate.slot = null;
+
+      matchSubsRecord[side].push({ outgoingId: candidate.id, incomingId: freshSub.id, minute });
+      logMatchEvent(side, 'substitution', minute, { out: candidate.name, in: freshSub.name });
+
+      subState[side].count++;
+      if (!isHalftimeWindow) subState[side].windowsUsed++;
+
+      const bucket = side === 'home' ? report.homePlayers : report.awayPlayers;
+      if (bucket[candidate.id]) bucket[candidate.id].minutes = minute;
+      initReportPlayer(side, freshSub, candidate.slotRole || 'SUB', Math.round(90 - minute));
+      return true;
+    }
+    return false;
+  };
+
+  const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
+    const currentMinute = Math.round((tick / maxTicks) * 90);
+    const starters = team.squad.filter(p => (p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id));
+    const bench = (team.squad || []).filter(p => (p.slot && p.slot.startsWith('B')) || (!p.slot && p !== units.gk));
+    if (!bench.length) return;
+
+    let subsMadeThisPass = 0;
+    const maxSubsPerPass = isHalftime ? 3 : 1; 
+
+    while (subsMadeThisPass < maxSubsPerPass) {
+      if (subState[side].count >= 5 || (!isHalftime && subState[side].windowsUsed >= 3)) break;
+
+      const emergencyCandidate = starters.find(p => p.isInjured || p.hasRedCard || (p.isGK && (!units.gk || units.gk.id !== p.id)));
+      if (emergencyCandidate) {
+        const freshSub = findArchetypeSmartSub(bench, emergencyCandidate, teamScore, oppScore, tick, maxTicks);
+        if (freshSub) {
+          const success = executeSubstitution(team, units, side, emergencyCandidate, freshSub, currentMinute, maxTicks, isHalftime);
+          if (success) {
+            subsMadeThisPass++;
+            continue;
+          }
+        }
+      }
+
+      if (!isHalftime && tick < Math.round(maxTicks * 0.35)) break;
+
+      const subThreshold = team.tactics?.subThreshold || 68;
+      const exhaustedCandidate = starters.find(p => p.condition <= subThreshold && !p.isInjured);
+      if (!exhaustedCandidate) break;
+
+      const freshSub = findArchetypeSmartSub(bench, exhaustedCandidate, teamScore, oppScore, tick, maxTicks);
+      if (freshSub) {
+        const success = executeSubstitution(team, units, side, exhaustedCandidate, freshSub, currentMinute, maxTicks, isHalftime);
+        if (success) {
+          subsMadeThisPass++;
+        } else {
+          break;
+        }
+      } else {
+        break;
       }
     }
   };
 
-  const applyConditionDecayAndCheckSubs = (team, units, side) => {
+  const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
     const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
     const pressStyle = team.tactics?.press || 'mid block';
     let pressMultiplier = pressStyle === 'gegenpress' ? 1.3 : (pressStyle === 'high press' ? 1.1 : 0.9);
@@ -879,40 +1024,41 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     starters.forEach(p => {
       if (p.condition === undefined) p.condition = 95;
       const bio = p.attributes?.bioenergetics || 70;
-      
-      // Bio factor scales decay inversely: high bioenergetics reduces drain, low increases it
       const bioFactor = Math.max(0.7, 1.3 - (bio / 100));
-      
-      // Calibrated base drain so total match drop spans ~15 (for elites) to ~30 (for the unfit)
       const decay = 0.35 * pressMultiplier * bioFactor;
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
-    });
 
-    // Sub trigger when condition drops into the 60s or lower (~69 or below)
-    const exhaustedStarters = starters.filter(p => p.condition <= 69);
-    if (exhaustedStarters.length > 0 && Math.random() < 0.30) {
-      performSubs(team, units, side);
-    }
+      // Injury check based on exhaustion/fatigue
+      if (!p.isInjured && p.condition < 35 && Math.random() < 0.003) {
+        p.isInjured = true;
+        logMatchEvent(side, 'injury', currentMinute, { player: p.name });
+      }
+    });
   };
+
+  const halftimeTick = Math.round(maxPossessions / 2);
 
   let homeRemaining = hTotalPossessions;
   let awayRemaining = aTotalPossessions;
 
   for (let tick = 1; tick <= maxPossessions; tick++) {
-    // Periodic tactical sub check around halftime
-    if (tick === Math.round(maxPossessions / 2)) {
-      performSubs(homeTeam, hUnits, 'home');
-      performSubs(awayTeam, aUnits, 'away');
+    const currentMinute = Math.round((tick / maxPossessions) * 90);
+
+    if (tick === halftimeTick) {
+      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, true, hGoals, aGoals);
+      evaluateDynamicSub(awayTeam, aUnits, 'away', tick, maxPossessions, true, aGoals, hGoals);
     }
 
     if (homeRemaining > 0) {
-      applyConditionDecayAndCheckSubs(homeTeam, hUnits, 'home');
-      resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true);
+      applyConditionDecayAndCheckSubs(homeTeam, hUnits, 'home', currentMinute);
+      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, false, hGoals, aGoals);
+      resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true, currentMinute);
       homeRemaining--;
     }
     if (awayRemaining > 0) {
-      applyConditionDecayAndCheckSubs(awayTeam, aUnits, 'away');
-      resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false);
+      applyConditionDecayAndCheckSubs(awayTeam, aUnits, 'away', currentMinute);
+      evaluateDynamicSub(awayTeam, aUnits, 'away', tick, maxPossessions, false, aGoals, hGoals);
+      resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false, currentMinute);
       awayRemaining--;
     }
   }
@@ -947,7 +1093,8 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     hxg: parseFloat(Math.max(0.1, hMatchXg).toFixed(1)),
     axg: parseFloat(Math.max(0.1, aMatchXg).toFixed(1)),
     report,
-    winner
+    winner,
+    matchEventsTimeline
   };
 }
 
@@ -1007,6 +1154,7 @@ export function advanceMomentSimulation(state) {
       fix.axg = simRes.axg;
       fix.report = simRes.report;
       fix.winner = simRes.winner;
+      fix.matchEventsTimeline = simRes.matchEventsTimeline;
       fix.played = true;
 
       if (fix.comp === 'league') {
