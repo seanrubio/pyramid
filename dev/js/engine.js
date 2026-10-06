@@ -976,48 +976,33 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   };
 
   const evaluateDynamicSub = (team, units, side, tick, maxTicks, isHalftime = false, teamScore = 0, oppScore = 0) => {
+    if (!team._subbedOutIds) team._subbedOutIds = new Set();
+
     const currentMinute = Math.round((tick / maxTicks) * 90);
-    const starters = team.squad.filter(p => (p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id));
+    const starters = team.squad.filter(p => ((p.slot && p.slot.startsWith('S')) || p.isGK || (units.gk && units.gk.id === p.id)) && !team._subbedOutIds.has(p.id));
     
-    // FIX: Only pick players explicitly sitting on the bench slots (B1, B2, etc.)
-    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B'));
+    const bench = (team.squad || []).filter(p => p.slot && p.slot.startsWith('B') && !team._subbedOutIds.has(p.id));
     if (!bench.length) return;
 
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
 
+    // 1. True Emergencies (Injuries, Red Cards, or catastrophic GK issues)
     const emergencyCandidate = starters.find(p => p.isInjured || p.hasRedCard || (p.isGK && (!units.gk || units.gk.id !== p.id)));
     
-    if (!isHalftime && !emergencyCandidate && tick < Math.round(maxTicks * 0.35)) return;
-
+    // 2. Routine Fatigue Subs (Strictly restricted to Halftime or past the 60th minute)
+    const isPastHourMark = currentMinute >= 60;
     const subThreshold = team.tactics?.subThreshold || 68;
-    const candidate = emergencyCandidate || starters.find(p => p.condition <= subThreshold && !p.isInjured);
-    
-    if (!candidate) return;
+    const exhaustedCandidate = (!isHalftime && !isPastHourMark) ? null : starters.find(p => p.condition <= subThreshold && !p.isInjured);
+
+    const candidate = emergencyCandidate || exhaustedCandidate;
+    if (!candidate || team._subbedOutIds.has(candidate.id)) return;
 
     const freshSub = findArchetypeSmartSub(bench, candidate, teamScore, oppScore, tick, maxTicks);
     if (!freshSub) return;
 
+    team._subbedOutIds.add(candidate.id);
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
-  };
-  const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
-    const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
-    const pressStyle = team.tactics?.press || 'mid block';
-    let pressMultiplier = pressStyle === 'gegenpress' ? 1.3 : (pressStyle === 'high press' ? 1.1 : 0.9);
-
-    starters.forEach(p => {
-      if (p.condition === undefined) p.condition = 95;
-      const bio = p.attributes?.bioenergetics || 70;
-      const bioFactor = Math.max(0.7, 1.3 - (bio / 100));
-      const decay = 0.35 * pressMultiplier * bioFactor;
-      p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
-
-      // Injury check based on exhaustion/fatigue
-      if (!p.isInjured && p.condition < 35 && Math.random() < 0.003) {
-        p.isInjured = true;
-        logMatchEvent(side, 'injury', currentMinute, { player: p.name });
-      }
-    });
   };
 
   const halftimeTick = Math.round(maxPossessions / 2);
