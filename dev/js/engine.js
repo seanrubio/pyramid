@@ -1054,19 +1054,19 @@ const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick,
     const currentMinute = Math.round((tick / maxPossessions) * 90);
 
     if (tick === halftimeTick) {
-      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, true, hGoals, aGoals);
-      evaluateDynamicSub(awayTeam, aUnits, 'away', tick, maxPossessions, true, aGoals, hGoals);
+      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, true, hGoals, aGoals, homeSubbedOut, homeSubbedIn);
+      evaluateDynamicSub(awayTeam, aUnits, 'away', tick, maxPossessions, true, aGoals, hGoals, awaySubbedOut, awaySubbedIn);
     }
 
     if (homeRemaining > 0) {
       applyConditionDecayAndCheckSubs(homeTeam, hUnits, 'home', currentMinute);
-      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, false, hGoals, aGoals);
+      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, false, hGoals, aGoals, homeSubbedOut, homeSubbedIn);
       resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true, currentMinute);
       homeRemaining--;
     }
     if (awayRemaining > 0) {
       applyConditionDecayAndCheckSubs(awayTeam, aUnits, 'away', currentMinute);
-      evaluateDynamicSub(awayTeam, aUnits, 'away', tick, maxPossessions, false, aGoals, hGoals);
+      evaluateDynamicSub(awayTeam, aUnits, 'away', tick, maxPossessions, false, aGoals, hGoals, awaySubbedOut, awaySubbedIn);
       resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false, currentMinute);
       awayRemaining--;
     }
