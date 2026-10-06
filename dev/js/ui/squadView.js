@@ -68,14 +68,12 @@ export function renderSquadView(container, ctx) {
   const occupantMap = {};
   team.squad.forEach(sqP => { if (sqP.slot) occupantMap[sqP.slot] = sqP; });
 
-  // Gather available seasons from archiveStats + current season
   const availableSeasons = [{ val: 'current', label: `Season ${ctx.state.season} (Current)` }];
   const maxArchivedSeason = Math.max(0, ...team.squad.map(p => Object.keys(p.archiveStats || {}).map(Number)).flat());
   for (let s = 1; s <= maxArchivedSeason; s++) {
     availableSeasons.push({ val: String(s), label: `Season ${s} (Archive)` });
   }
 
-  // Helper to extract stats based on season & comp filters
   const getFilteredStatsAndMins = (p) => {
     let rawStats = { apps: 0, goals: 0, shots: 0, sot: 0, xg: 0.0, bigChancesCreated: 0, bigChancesComp: 0, bigChancesMissed: 0, assists: 0, xa: 0.0, passes: 0, passesComp: 0, keyPasses: 0, crosses: 0, crossesComp: 0, tackles: 0, tacklesWon: 0, interceptions: 0, aerialsContested: 0, aerialsWon: 0, saves: 0, shotsFaced: 0, cleanSheets: 0 };
     let mins = 0;
@@ -147,7 +145,7 @@ export function renderSquadView(container, ctx) {
         <th onclick="sortSquad('ip')" style="${thStyle('ip', '35px')}">IP</th>
         <th onclick="sortSquad('oop')" style="${thStyle('oop', '35px')}">OOP</th>
         <th onclick="sortSquad('tr')" style="${thStyle('tr', '35px')}">TR</th>
-        <th onclick="sortSquad('minutesPlayed')" style="${thStyle('minutesPlayed', '48px', 'right')}">Min</th>
+        <th style="text-align: center; width: 60px; color: var(--text-muted);">Cond</th>
       </tr>
     `;
   } else {
@@ -206,6 +204,19 @@ export function renderSquadView(container, ctx) {
     }
 
     if (mode === 'general') {
+      let conditionDisplay = `${Math.round(p.condition || 90)}%`;
+      let conditionColor = 'var(--text-muted)';
+
+      if (p.isInjured) {
+        const weeks = p.injuryWeeksRemaining || 1;
+        conditionDisplay = `<span title="Injured: ${weeks} week(s) remaining" style="cursor: help;">INJ</span>`;
+        conditionColor = 'var(--red, #f85149)';
+      } else if (p.isSuspended) {
+        const matches = p.suspensionMatchesRemaining || 1;
+        conditionDisplay = `<span title="Suspended: ${matches} match(es) remaining" style="cursor: help;">SUS</span>`;
+        conditionColor = '#e3b341';
+      }
+
       return `
         <tr>
           <td>${slotDisplay}</td>
@@ -220,7 +231,7 @@ export function renderSquadView(container, ctx) {
           <td style="text-align: center;">${renderGlyphCell(glyphs.ip)}</td>
           <td style="text-align: center;">${renderGlyphCell(glyphs.oop)}</td>
           <td style="text-align: center;">${renderGlyphCell(glyphs.tr)}</td>
-          <td style="${tdStyle('minutesPlayed', 'right')}">${mins > 0 ? `${mins}'` : '—'}</td>
+          <td style="text-align: center; font-family: monospace; font-size: 11px; font-weight: 700; color: ${conditionColor};">${conditionDisplay}</td>
         </tr>
       `;
     }
@@ -270,7 +281,6 @@ export function renderSquadView(container, ctx) {
     `;
   }).join('');
 
-  // Conditionally render season and comp filters only when viewing stats
   const showStatsFilters = (mode !== 'general');
 
   container.innerHTML = `
@@ -287,7 +297,6 @@ export function renderSquadView(container, ctx) {
         `).join('')}
       </div>
 
-      <!-- Multi-Competition & Season Filters (Visible on Stats views only) -->
       <div style="display: flex; gap: 6px; align-items: center;">
         ${showStatsFilters ? `
           <select onchange="setSquadSeasonFilter(this.value)" style="padding: 2px 6px; font-size: 11px; background: #161b22; color: #fff; border: 1px solid var(--border);">
@@ -380,7 +389,6 @@ export function sortSquad(key, ctx, renderLayout) {
   const getLastName = (fullName) => fullName.trim().split(/\s+/).pop().toLowerCase();
 
   const getMetricVal = (p, k) => {
-    // Dynamic metric pull respecting current filter context during sort
     const seasonFilter = ctx.squadSeasonFilter || 'current';
     const compFilter = ctx.squadCompFilter || 'all';
     let st = {};
