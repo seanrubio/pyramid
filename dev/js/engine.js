@@ -1020,21 +1020,23 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
 
     if (subState[side].count >= 5) return;
     if (!isHalftime && subState[side].windowsUsed >= 3) return;
-
-    if (!isHalftime && currentMinute < 5) return;
+    if (!isHalftime && currentMinute < 10) return;
 
     const emergencyCandidate = (currentMinute >= 5) ? starters.find(p => p.isInjured === true) : null;
     
-    const isPastHourMark = isHalftime || currentMinute >= 60;
-    const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 12);
+    // Lowered time barrier (55' instead of 60') and shortened window spacing (8 mins instead of 12)
+    const isPastHourMark = isHalftime || currentMinute >= 55;
+    const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 8);
     
-    const subThreshold = team.tactics?.subThreshold || 68;
+    // Raised condition threshold from 68 to 75 so managers act earlier on fatigue
+    const subThreshold = team.tactics?.subThreshold || 75;
     
-    let candidate = emergencyCandidate || ((isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured) : null);
+    let candidate = emergencyCandidate || ((isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured && !p.hasRedCard) : null);
 
-    if (!candidate && isPastHourMark && canUseTacticalWindow && currentMinute >= 70 && Math.random() < 0.35) {
+    // Increased late-game tactical rotation probability (70% instead of 35% after 70')
+    if (!candidate && isPastHourMark && canUseTacticalWindow && currentMinute >= 70 && subState[side].count < 5) {
       const eligibleStarters = starters.filter(p => !p.isInjured && !p.hasRedCard).sort((a, b) => a.condition - b.condition);
-      if (eligibleStarters.length > 0) {
+      if (eligibleStarters.length > 0 && Math.random() < 0.70) {
         candidate = eligibleStarters[0];
       }
     }
