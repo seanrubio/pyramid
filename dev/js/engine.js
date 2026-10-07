@@ -836,6 +836,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
             }
           }
         } else {
+          // Clean stop / interception (no foul committed)
           defStat.interceptions++;
         }
 
