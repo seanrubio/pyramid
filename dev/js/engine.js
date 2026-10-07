@@ -256,7 +256,6 @@ export function autoAssignLineup(DB, team) {
   // Exclude injured, suspended, or severely fatigued players (condition < 50) unless desperate
   let availablePlayers = team.squad.filter(p => !p.isInjured && !p.isSuspended && !p.hasRedCard && p.condition >= 50);
   if (availablePlayers.length < 15) {
-    // Fallback if squad is deeply depleted
     availablePlayers = team.squad.filter(p => !p.isInjured && !p.isSuspended && !p.hasRedCard);
   }
 
@@ -819,7 +818,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
         }
 
         const regulation = defender.attributes.regulation || 50;
-        if (!defender.hasRedCard && Math.random() < (0.015 + (100 - regulation) * 0.001)) {
+        if (!defender.hasRedCard && Math.random() < (0.038 + (100 - regulation) * 0.007)) {
           if (!defender.hasYellowCard) {
             defender.hasYellowCard = true;
             logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
@@ -828,7 +827,6 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
             defender.isSuspended = true;
             defender.suspensionMatchesRemaining = 1;
             logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
-            // ---> ADD THIS: Freeze their match report minutes right at dismissal
             const oppBucket = (oppSideKey === 'home') ? report.homePlayers : report.awayPlayers;
             if (oppBucket[defender.id]) {
               oppBucket[defender.id].minutes = currentMinute;
@@ -930,8 +928,8 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
   };
 
   const findArchetypeSmartSub = (bench, outgoingPlayer, teamScore, oppScore, tick, maxTicks) => {
-    const isWinningLate = (tick >= Math.round(maxTicks * 0.75)) && (teamScore > oppScore);
-    const isChasingGoal = (tick >= Math.round(maxTicks * 0.65)) && (teamScore < oppScore);
+    const isWinningLate = (tick >= Math.round(maxTicks * 0.70)) && (teamScore > oppScore);
+    const isChasingGoal = (tick >= Math.round(maxTicks * 0.60)) && (teamScore < oppScore);
 
     let subIndex = -1;
 
@@ -1024,19 +1022,17 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
 
     const emergencyCandidate = (currentMinute >= 5) ? starters.find(p => p.isInjured === true) : null;
     
-    // Lowered time barrier (55' instead of 60') and shortened window spacing (8 mins instead of 12)
     const isPastHourMark = isHalftime || currentMinute >= 55;
-    const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 6);
+    const canUseTacticalWindow = isHalftime || (currentMinute - subState[side].lastSubMinute >= 4);
     
-    // Raised condition threshold from 68 to 75 so managers act earlier on fatigue
     const subThreshold = team.tactics?.subThreshold || 75;
     
-    let candidate = emergencyCandidate || ((isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured && !p.hasRedCard) : null);
+    let candidate = emergencyCandidate || ((isPastHourMark && canUseTacticalWindow) ? starters.find(p => p.condition <= subThreshold && !p.isInjured && !p.hasRedCard && !p.isGK) : null);
 
     // Increased late-game tactical rotation probability (70% instead of 35% after 70')
-    if (!candidate && isPastHourMark && canUseTacticalWindow && currentMinute >= 85 && subState[side].count < 5) {
+    if (!candidate && isPastHourMark && canUseTacticalWindow && currentMinute >= 75 && subState[side].count < 5) {
       const eligibleStarters = starters.filter(p => !p.isInjured && !p.hasRedCard).sort((a, b) => a.condition - b.condition);
-      if (eligibleStarters.length > 0 && Math.random() < 0.70) {
+      if (eligibleStarters.length > 0 && Math.random() < 0.90) {
         candidate = eligibleStarters[0];
       }
     }
@@ -1065,6 +1061,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       if (p.condition === undefined) p.condition = 95;
       const bio = p.attributes?.bioenergetics || 70;
       const bioFactor = Math.max(0.7, 1.3 - (bio / 100));
+      const decayMult = p.isGK ? 0.12 : pressMultiplier;
       const decay = 0.35 * pressMultiplier * bioFactor;
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
 
