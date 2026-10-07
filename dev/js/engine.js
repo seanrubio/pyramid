@@ -1488,3 +1488,4 @@ export function adaptLineupToFormation(DB, team, newFormation) {
     chosen.slot = slot.slotCode;
   }
 }
+}
