@@ -823,17 +823,20 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
             defender.hasYellowCard = true;
             logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
           } else {
-            defender.hasRedCard = true;
-            defender.isSuspended = true;
-            defender.suspensionMatchesRemaining = 1;
-            logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
-            const oppBucket = (oppSideKey === 'home') ? report.homePlayers : report.awayPlayers;
-            if (oppBucket[defender.id]) {
-              oppBucket[defender.id].minutes = currentMinute;
+            if (Math.random() < 0.35) {
+              defender.hasRedCard = true;
+              defender.isSuspended = true;
+              defender.suspensionMatchesRemaining = 1;
+              logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
+              const oppBucket = (oppSideKey === 'home') ? report.homePlayers : report.awayPlayers;
+              if (oppBucket[defender.id]) {
+                oppBucket[defender.id].minutes = currentMinute;
             }
           }
         }
-      } else {
+      } 
+        
+        else {
         defStat.interceptions++;
       }
 
@@ -1065,10 +1068,23 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       const decay = 0.35 * pressMultiplier * bioFactor;
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
 
-      if (!p.isInjured && p.condition < 35 && Math.random() < 0.003) {
-        p.isInjured = true;
-        p.injuryWeeksRemaining = Math.floor(Math.random() * 3) + 1;
-        logMatchEvent(side, 'injury', currentMinute, { player: p.name });
+// --- CONTINUOUS INJURY RISK MODEL ---
+      if (!p.isInjured) {
+        // Base risk per tick + fatigue multiplier + bioenergetics vulnerability
+        const fatigueSeverity = Math.max(1.0, (100 - p.condition) / 25); // Scales up as condition drops
+        const bioVulnerability = Math.max(0.8, 1.8 - (bio / 70));        // Lower bio = higher risk
+        const pressStrain = pressStyle === 'gegenpress' ? 1.3 : 1.0;
+
+        // Combined probability per tick
+        const injuryProbability = 0.00045 * fatigueSeverity * bioVulnerability * pressStrain;
+
+        if (Math.random() < injuryProbability) {
+          p.isInjured = true;
+          // Severity scales slightly with how fatigued they were when it happened
+          const maxWeeks = p.condition < 60 ? 4 : 2;
+          p.injuryWeeksRemaining = Math.floor(Math.random() * maxWeeks) + 1;
+          logMatchEvent(side, 'injury', currentMinute, { player: p.name });
+        }
       }
     });
   };
