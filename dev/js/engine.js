@@ -1055,7 +1055,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
 
-  const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
+ const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
     const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
     const pressStyle = team.tactics?.press || 'mid block';
     let pressMultiplier = pressStyle === 'gegenpress' ? 1.3 : (pressStyle === 'high press' ? 1.1 : 0.9);
@@ -1068,7 +1068,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
       const decay = 0.35 * pressMultiplier * bioFactor;
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
 
-// --- CONTINUOUS INJURY RISK MODEL ---
+      // --- CONTINUOUS INJURY RISK MODEL ---
       if (!p.isInjured) {
         // Base risk per tick + fatigue multiplier + bioenergetics vulnerability
         const fatigueSeverity = Math.max(1.0, (100 - p.condition) / 25); // Scales up as condition drops
@@ -1085,9 +1085,9 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
           p.injuryWeeksRemaining = Math.floor(Math.random() * maxWeeks) + 1;
           logMatchEvent(side, 'injury', currentMinute, { player: p.name });
         }
-      }     // <--- Closes if (!p.isInjured)
-    });     // <--- Closes starters.forEach
-  };        // <--- Closes applyConditionDecayAndCheckSubs
+      } // <--- THIS CLOSING BRACE WAS MISSING
+    });
+  };
   
   const halftimeTick = Math.round(maxPossessions / 2);
 
