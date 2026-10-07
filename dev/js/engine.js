@@ -818,11 +818,12 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
         }
 
         const regulation = defender.attributes.regulation || 50;
-        if (!defender.hasRedCard && Math.random() < (0.038 + (100 - regulation) * 0.007)) {
+        if (!defender.hasRedCard && Math.random() < (0.038 + (100 - regulation) * 0.0007)) {
           if (!defender.hasYellowCard) {
             defender.hasYellowCard = true;
             logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
           } else {
+            // Already on a yellow card: only a 35% chance a subsequent foul warrants a second yellow
             if (Math.random() < 0.35) {
               defender.hasRedCard = true;
               defender.isSuspended = true;
@@ -831,12 +832,12 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
               const oppBucket = (oppSideKey === 'home') ? report.homePlayers : report.awayPlayers;
               if (oppBucket[defender.id]) {
                 oppBucket[defender.id].minutes = currentMinute;
+              }
             }
           }
+        } else {
+          defStat.interceptions++;
         }
-      } else {
-        defStat.interceptions++;
-      }
 
       const passSuccessProb = 0.74 + ((passer.attributes.processing * 0.5 + passer.attributes.scanning * 0.5) * 0.002);
       if (Math.random() < Math.min(0.88, passSuccessProb)) {
