@@ -834,9 +834,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
             }
           }
         }
-      } 
-        
-        else {
+      } else {
         defStat.interceptions++;
       }
 
@@ -1085,7 +1083,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
           p.injuryWeeksRemaining = Math.floor(Math.random() * maxWeeks) + 1;
           logMatchEvent(side, 'injury', currentMinute, { player: p.name });
         }
-      } // <--- THIS CLOSING BRACE WAS MISSING
+      }
     });
   };
   
@@ -1487,5 +1485,4 @@ export function adaptLineupToFormation(DB, team, newFormation) {
     const chosen = availableOutfield.shift();
     chosen.slot = slot.slotCode;
   }
-}
 }
