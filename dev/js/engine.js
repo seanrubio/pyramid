@@ -1085,8 +1085,9 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
           p.injuryWeeksRemaining = Math.floor(Math.random() * maxWeeks) + 1;
           logMatchEvent(side, 'injury', currentMinute, { player: p.name });
         }
-    });
-  };
+      }     // <--- Closes if (!p.isInjured)
+    });     // <--- Closes starters.forEach
+  };        // <--- Closes applyConditionDecayAndCheckSubs
   
   const halftimeTick = Math.round(maxPossessions / 2);
 
