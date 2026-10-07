@@ -834,8 +834,8 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
           }
         }
       } else {
-          defStat.interceptions++;
-        }
+        defStat.interceptions++;
+      }
 
       const passSuccessProb = 0.74 + ((passer.attributes.processing * 0.5 + passer.attributes.scanning * 0.5) * 0.002);
       if (Math.random() < Math.min(0.88, passSuccessProb)) {
@@ -1052,7 +1052,7 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
 
-const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
+ const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
     const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S') && !p.isGK);
     const pressStyle = team.tactics?.press || 'mid block';
     let pressMultiplier = pressStyle === 'gegenpress' ? 1.35 : (pressStyle === 'high press' ? 1.15 : 0.95);
@@ -1098,6 +1098,57 @@ const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
       }
     }
   };
+  
+  const halftimeTick = Math.round(maxPossessions / 2);
+
+  let homeRemaining = hTotalPossessions;
+  let awayRemaining = aTotalPossessions;
+
+  for (let tick = 1; tick <= maxPossessions; tick++) {
+    const currentMinute = Math.round((tick / maxPossessions) * 90);
+
+    if (tick === halftimeTick) {
+      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, true, hGoals, aGoals, homeSubbedOut, homeSubbedIn);
+      evaluateDynamicSub(awayTeam, aUnits, 'away', tick, maxPossessions, true, aGoals, hGoals, awaySubbedOut, awaySubbedIn);
+    }
+
+    if (homeRemaining > 0) {
+      applyConditionDecayAndCheckSubs(homeTeam, hUnits, 'home', currentMinute);
+      evaluateDynamicSub(homeTeam, hUnits, 'home', tick, maxPossessions, false, hGoals, aGoals, homeSubbedOut, homeSubbedIn);
+      resolveTeamPossession(homeTeam, awayTeam, hUnits, aUnits, true, currentMinute);
+      homeRemaining--;
+    }
+    if (awayRemaining > 0) {
+      applyConditionDecayAndCheckSubs(awayTeam, hUnits, 'away', currentMinute);
+      evaluateDynamicSub(awayTeam, hUnits, 'away', tick, maxPossessions, false, aGoals, hGoals, awaySubbedOut, awaySubbedIn);
+      resolveTeamPossession(awayTeam, homeTeam, aUnits, hUnits, false, currentMinute);
+      awayRemaining--;
+    }
+  }
+
+  if (aGoals === 0) {
+    (homeTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => {
+      if (p.isGK || ['CB', 'LB', 'RB'].includes(p.slotRole)) getCompetitionPlayerStats(p, comp).cleanSheets++;
+    });
+  }
+  if (hGoals === 0) {
+    (awayTeam.squad || []).filter(p => p.slot && p.slot.startsWith('S')).forEach(p => {
+      if (p.isGK || ['CB', 'LB', 'RB'].includes(p.slotRole)) getCompetitionPlayerStats(p, comp).cleanSheets++;
+    });
+  }
+
+  applyMatchMinutes(homeTeam, matchSubsRecord.home, comp);
+  applyMatchMinutes(awayTeam, matchSubsRecord.away, comp);
+
+  let winner = null;
+  if (comp === 'cup') {
+    if (hGoals > aGoals) winner = homeTeam.id;
+    else if (aGoals > hGoals) winner = awayTeam.id;
+    else {
+      winner = Math.random() < 0.5 ? homeTeam.id : awayTeam.id;
+      report.penaltyWinner = winner;
+    }
+  }
 
   return {
     hg: hGoals,
