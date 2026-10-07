@@ -817,12 +817,12 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
           recordPlayerAction(oppSideKey, defender, 'tacklesWon');
         }
 
- const regulation = defender.attributes.regulation || 50;
-        if (!defender.hasRedCard && Math.random() < (0.038 + (100 - regulation) * 0.0007)) {
+        const regulation = defender.attributes.regulation || 50;
+        if (!defender.hasRedCard && Math.random() < (0.038 + (100 - regulation) * 0.007)) {
           if (!defender.hasYellowCard) {
             defender.hasYellowCard = true;
             logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
-          } else if (Math.random() < 0.35) {
+          } else {
             defender.hasRedCard = true;
             defender.isSuspended = true;
             defender.suspensionMatchesRemaining = 1;
@@ -832,7 +832,8 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
               oppBucket[defender.id].minutes = currentMinute;
             }
           }
-        } else {
+        }
+      } else {
           defStat.interceptions++;
         }
 
