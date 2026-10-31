@@ -823,17 +823,20 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
             defender.hasYellowCard = true;
             logMatchEvent(oppSideKey, 'yellow_card', currentMinute, { player: defender.name });
           } else {
-            defender.hasRedCard = true;
-            defender.isSuspended = true;
-            defender.suspensionMatchesRemaining = 1;
-            logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
-            const oppBucket = (oppSideKey === 'home') ? report.homePlayers : report.awayPlayers;
-            if (oppBucket[defender.id]) {
-              oppBucket[defender.id].minutes = currentMinute;
+            if (Math.random() < 0.35) {
+              defender.hasRedCard = true;
+              defender.isSuspended = true;
+              defender.suspensionMatchesRemaining = 1;
+              logMatchEvent(oppSideKey, 'red_card', currentMinute, { player: defender.name });
+              const oppBucket = (oppSideKey === 'home') ? report.homePlayers : report.awayPlayers;
+              if (oppBucket[defender.id]) {
+                oppBucket[defender.id].minutes = currentMinute;
             }
           }
         }
-      } else {
+      } 
+        
+        else {
         defStat.interceptions++;
       }
 
@@ -1052,19 +1055,20 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
     executeSubstitution(team, units, side, candidate, freshSub, currentMinute, maxTicks, isHalftime);
   };
 
- const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
-    const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S') && !p.isGK);
+  const applyConditionDecayAndCheckSubs = (team, units, side, currentMinute) => {
+    const starters = team.squad.filter(p => p.slot && p.slot.startsWith('S'));
     const pressStyle = team.tactics?.press || 'mid block';
-    let pressMultiplier = pressStyle === 'gegenpress' ? 1.35 : (pressStyle === 'high press' ? 1.15 : 0.95);
+    let pressMultiplier = pressStyle === 'gegenpress' ? 1.3 : (pressStyle === 'high press' ? 1.1 : 0.9);
 
     starters.forEach(p => {
       if (p.condition === undefined) p.condition = 95;
       const bio = p.attributes?.bioenergetics || 70;
-      const bioFactor = Math.max(0.6, 1.4 - (bio / 100));
+      const bioFactor = Math.max(0.7, 1.3 - (bio / 100));
+      const decayMult = p.isGK ? 0.12 : pressMultiplier;
       const decay = 0.35 * pressMultiplier * bioFactor;
       p.condition = Math.max(20, parseFloat((p.condition - decay).toFixed(2)));
 
-      // --- CONTINUOUS INJURY RISK MODEL ---
+// --- CONTINUOUS INJURY RISK MODEL ---
       if (!p.isInjured) {
         // Base risk per tick + fatigue multiplier + bioenergetics vulnerability
         const fatigueSeverity = Math.max(1.0, (100 - p.condition) / 25); // Scales up as condition drops
@@ -1083,20 +1087,6 @@ export function simulateSingleFixture(homeTeam, awayTeam, comp = 'league') {
         }
       }
     });
-
-    // Handle Goalkeepers separately with very low risk and minimal fatigue
-    const gk = units.gk;
-    if (gk && !gk.isInjured) {
-      if (gk.condition === undefined) gk.condition = 95;
-      gk.condition = Math.max(30, parseFloat((gk.condition - 0.05).toFixed(2)));
-      
-      // Goalkeeper-specific ultra-low injury check
-      if (Math.random() < 0.00015) {
-        gk.isInjured = true;
-        gk.injuryWeeksRemaining = Math.floor(Math.random() * 2) + 1;
-        logMatchEvent(side, 'injury', currentMinute, { player: gk.name });
-      }
-    }
   };
   
   const halftimeTick = Math.round(maxPossessions / 2);
